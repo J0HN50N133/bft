@@ -1,5 +1,6 @@
 use thiserror::Error;
 use crate::parser::ParsedLine;
+use crate::bash;
 
 #[derive(Error, Debug)]
 pub enum CompletionError {
@@ -9,6 +10,8 @@ pub enum CompletionError {
     BashError(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("Bash module error: {0}")]
+    BashModuleError(#[from] bash::BashError),
     #[error("Other error: {0}")]
     Other(String),
 }
@@ -68,4 +71,51 @@ pub struct CompletionSpec {
     pub prefix: String,
     pub suffix: String,
     pub options: CompletionOptions,
+}
+
+pub fn resolve_compspec(command: &str) -> Result<CompletionSpec, CompletionError> {
+    if command.is_empty() {
+        return Ok(CompletionSpec::default()); 
+    }
+
+    if let Some(spec) = bash::query_complete(command)? {
+        Ok(spec)
+    } else {
+        let mut spec = CompletionSpec::default();
+        spec.options.default = true; 
+        Ok(spec)
+    }
+}
+
+pub fn execute_completion(spec: &CompletionSpec, ctx: &CompletionContext) -> Result<Vec<String>, CompletionError> {
+    let mut candidates = Vec::new();
+    let word = &ctx.current_word;
+
+    let run_compgen = |flags: Vec<String>| -> Result<Vec<String>, CompletionError> {
+        let mut args = flags;
+        args.push("--".to_string());
+        args.push(word.clone());
+        Ok(bash::execute_compgen(&args)?)
+    };
+
+    if let Some(wordlist) = &spec.wordlist {
+        candidates.extend(run_compgen(vec!["-W".to_string(), wordlist.clone()])?);
+    }
+
+    if let Some(cmd) = &spec.command {
+        candidates.extend(run_compgen(vec!["-C".to_string(), cmd.clone()])?);
+    }
+    
+    if let Some(glob) = &spec.glob_pattern {
+        candidates.extend(run_compgen(vec!["-G".to_string(), glob.clone()])?);
+    }
+
+    if spec.options.filenames || spec.options.default {
+        candidates.extend(run_compgen(vec!["-f".to_string()])?);
+    }
+    if spec.options.dirnames {
+        candidates.extend(run_compgen(vec!["-d".to_string()])?);
+    }
+
+    Ok(candidates)
 }
