@@ -132,12 +132,16 @@ mod tests {
     fn test_common_prefix() {
         let candidates = vec!["file1", "file2"];
         let (res, _nospace, prefix) = find_common_prefix(&candidates.iter().map(|s| s.to_string()).collect::<Vec<_>>(), 0, false);
-        assert_eq!(prefix, "file");
+        // auto_common_prefix_part=false, so we don't complete partial prefix "file"
+        // We expect original candidates and no prefix returned
+        assert_eq!(prefix, "");
         assert_eq!(res.len(), 2);
         
         let (res, nospace, prefix) = find_common_prefix(&candidates.iter().map(|s| s.to_string()).collect::<Vec<_>>(), 0, true);
+        // With auto_common_prefix_part=true, we complete to "file"
         assert_eq!(res.len(), 1);
         assert_eq!(res[0], "file");
+        assert_eq!(prefix, "file");
         assert!(nospace);
     }
 
