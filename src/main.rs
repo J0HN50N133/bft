@@ -62,8 +62,15 @@ fn main() -> Result<()> {
     let mut spec = completion::CompletionSpec::default();
     let mut used_carapace = false;
 
+    // Environment variable completion
+    if ctx.current_word.starts_with('$') {
+        info!("Environment variable completion for '{}'", ctx.current_word);
+        let var_prefix = ctx.current_word[1..].to_string();
+        candidates = completion::get_env_variables(&var_prefix);
+        info!("Generated {} env variable candidates", candidates.len());
+    }
     // Try Carapace first
-    if let Ok(Some(items)) =
+    else if let Ok(Some(items)) =
         completion::carapace::CarapaceProvider::fetch_suggestions(&ctx.command, &ctx.words)
     {
         if !items.is_empty() {
@@ -88,12 +95,11 @@ fn main() -> Result<()> {
     }
 
     // Fallback to Bash
-    if !used_carapace {
+    if !used_carapace && !ctx.current_word.starts_with('$') {
         info!("Using Bash completion for command '{}'", ctx.command);
         spec = completion::resolve_compspec(&ctx.command)?;
         debug!("Completion spec: {:?}", spec);
 
-        // Special handling for command name completion (first word)
         if ctx.current_word_idx == 0
             && spec.function.is_none()
             && spec.wordlist.is_none()
@@ -104,7 +110,6 @@ fn main() -> Result<()> {
                 "Using command completion for command name '{}'",
                 ctx.current_word
             );
-            // Use compgen -c to get command names from PATH
             candidates = bash::execute_compgen(&[
                 "-c".to_string(),
                 "--".to_string(),
@@ -126,7 +131,6 @@ fn main() -> Result<()> {
         }
     }
 
-    // Common Prefix Logic
     let (candidates, nospace, _prefix) = quoting::find_common_prefix(
         &candidates,
         ctx.current_word.len(),

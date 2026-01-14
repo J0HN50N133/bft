@@ -138,3 +138,11 @@ pub fn execute_completion(
 
     Ok(candidates)
 }
+
+pub fn get_env_variables(prefix: &str) -> Vec<String> {
+    let prefix_lower = prefix.to_lowercase();
+    std::env::vars()
+        .filter(|(k, _)| k.to_lowercase().starts_with(&prefix_lower))
+        .map(|(k, _)| format!("${}", k))
+        .collect()
+}
