@@ -1,6 +1,6 @@
 # bft (Bash Fuzzy Tab)
 
-[![CI](https://github.com/yourusername/bash-fzf-tab-completion/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/bash-fzf-tab-completion/actions/workflows/ci.yml)
+[![CI](https://github.com/J0HN50N133/bft/actions/workflows/ci.yml/badge.svg)](https://github.com/J0HN50N133/bft/actions/workflows/ci.yml)
 
 A fast, interactive fuzzy tab completion for Bash, written in Rust.
 
@@ -24,6 +24,7 @@ A fast, interactive fuzzy tab completion for Bash, written in Rust.
 - **Rust 1.90+** (for building)
 - **Bash 4.0+**
 - **[Carapace](https://carapace.sh/)**: Required for generating completion candidates.
+
   ```bash
   # Install Carapace
   # macOS / Linux (Homebrew)
@@ -39,13 +40,15 @@ A fast, interactive fuzzy tab completion for Bash, written in Rust.
 ### Install `bft`
 
 #### From Source
+
 ```bash
-git clone https://github.com/yourusername/bft.git
+git clone https://github.com/J0HN50N133/bft.git
 cd bft
 cargo install --path .
 ```
 
 #### From Crates.io
+
 ```bash
 cargo install bft
 ```
@@ -65,6 +68,7 @@ source /path/to/scripts/bft.bash
 > **Note**: `bft` relies on the `scripts/bft.bash` binding. Ensure this script is sourced.
 
 2. Reload your shell:
+
 ```bash
 source ~/.bashrc
 ```
@@ -78,6 +82,7 @@ Simply press `<Tab>` while typing a command.
 ### Examples
 
 **Git Branch Selection**
+
 ```bash
 git checkout <Tab>
 # > dev
@@ -86,6 +91,7 @@ git checkout <Tab>
 ```
 
 **File Navigation**
+
 ```bash
 cd src/<Tab>
 # > completion/
@@ -94,6 +100,7 @@ cd src/<Tab>
 ```
 
 **Carapace-powered Completion**
+
 ```bash
 docker run <Tab>
 # Interactive list of docker images and containers
@@ -107,18 +114,21 @@ docker run <Tab>
 |----------|-------------|---------|
 | `FZF_TAB_COMPLETION_FZF_ARGS` | *Legacy*. Arguments for selector (height/prompt). | `None` |
 | `FZF_TAB_COMPLETION_DIR_MARK` | Marker for directory candidates | `/` |
-| `BFT_PROMPT` | Prompt string for the selector | `> ` |
+| `BFT_PROMPT` | Prompt string for the selector | `>` |
 
 *(Note: Some legacy `FZF_` variables are being migrated to `BFT_` prefixes)*
 
 ## Troubleshooting
 
 ### `carapace` not found
+
 Ensure `carapace` is in your `$PATH`. `bft` executes `carapace` to fetch completions.
 
 ### Candidates not appearing
+
 1. Check if `carapace` supports the command: `carapace list`
 2. Run in debug mode to see what's happening:
+
    ```bash
    RUST_LOG=debug bft "$READLINE_LINE" "$READLINE_POINT"
    ```
@@ -126,14 +136,17 @@ Ensure `carapace` is in your `$PATH`. `bft` executes `carapace` to fetch complet
 ## Development
 
 ### Build
+
 ```bash
 cargo build --release
 ```
 
 ### Test
+
 ```bash
 cargo test
 ```
 
 ## License
+
 MIT
