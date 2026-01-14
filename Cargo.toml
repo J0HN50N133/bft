@@ -1,7 +1,8 @@
 [package]
 name = "bft"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.90"
 description = "Fast, interactive fuzzy tab completion for Bash"
 license = "MIT"
 repository = "https://github.com/yourusername/bash-fzf-tab-completion"

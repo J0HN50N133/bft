@@ -17,6 +17,11 @@ use crate::selector::{Selector, SelectorConfig};
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
+    if args.len() > 1 && args[1] == "--init-script" {
+        print!("{}", include_str!("../scripts/bft.bash"));
+        return Ok(());
+    }
+
     let readline_line = if args.len() >= 2 {
         args[1].clone()
     } else {
