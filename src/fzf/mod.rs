@@ -86,6 +86,10 @@ pub fn select_with_fzf(
     let output = fzf_wrapped::run_with_output(fzf, formatted_candidates);
 
     if let Some(selection) = output {
+        if selection.is_empty() {
+            return Ok(None);
+        }
+
         if let Some(idx) = selection.find(sep) {
             Ok(Some(selection[..idx].to_string()))
         } else {
