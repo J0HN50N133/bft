@@ -34,7 +34,7 @@ fn main() -> Result<()> {
 
     env_logger::init();
 
-    info!("Starting bash-fzf-tab-completion");
+    info!("Starting bft");
 
     let config = Config::from_env();
 

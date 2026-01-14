@@ -1,6 +1,6 @@
-# bash-fzf-tab-completion
+# bft (Bash Fzf Tab)
 
-A fast, interactive fzf-based tab completion for Bash, written in Rust.
+A fast, interactive fuzzy tab completion for Bash, written in Rust.
 
 This tool provides an enhanced tab completion experience for Bash by integrating [fzf](https://github.com/junegunn/fzf) with bash's completion system. Press Tab to trigger an interactive fuzzy search over completion candidates.
 
@@ -29,8 +29,8 @@ This tool provides an enhanced tab completion experience for Bash by integrating
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/bash-fzf-tab-completion.git
-cd bash-fzf-tab-completion
+git clone https://github.com/yourusername/bft.git
+cd bft
 
 # Build and install
 cargo install --path .
@@ -39,7 +39,7 @@ cargo install --path .
 ### Install from crates.io
 
 ```bash
-cargo install bash-fzf-tab-completion
+cargo install bft
 ```
 
 ## Usage
@@ -49,11 +49,11 @@ cargo install bash-fzf-tab-completion
 1. Source the bash binding script in your `~/.bashrc`:
 
 ```bash
-echo 'source /path/to/bash-fzf-tab-completion.bash' >> ~/.bashrc
+echo 'source /path/to/bft.bash' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-2. That's it! Press Tab to trigger fzf-based completion.
+2. That's it! Press Tab to trigger fuzzy completion.
 
 ### Basic Usage
 
@@ -222,7 +222,7 @@ git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
 
 2. Check if the Rust binary is installed:
    ```bash
-   which bash-fzf-tab-completion
+   which bft
    ```
 
 ### Candidates not appearing

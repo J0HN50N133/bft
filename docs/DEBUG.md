@@ -29,13 +29,13 @@ export LOGFORTH_FILTER=trace
 
 ```bash
 # 启用调试日志
-LOGFORTH_FILTER=debug ./target/release/bash-fzf-tab-completion
+LOGFORTH_FILTER=debug ./target/release/bft
 
 # 在测试时使用
 LOGFORTH_FILTER=debug cargo test
 
 # 与其他环境变量一起使用
-LOGFORTH_FILTER=debug READLINE_LINE="ls " READLINE_POINT=3 ./target/release/bash-fzf-tab-completion
+LOGFORTH_FILTER=debug READLINE_LINE="ls " READLINE_POINT=3 ./target/release/bft
 ```
 
 ## 使用 cargo 的调试工具
@@ -119,7 +119,7 @@ cargo build
 ### 2. 使用 lldb (Linux/macOS)
 
 ```bash
-lldb target/debug/bash-fzf-tab-completion
+lldb target/debug/bft
 (lldb) env READLINE_LINE="ls "
 (lldb) env READLINE_POINT=3
 (lldb) run
@@ -128,7 +128,7 @@ lldb target/debug/bash-fzf-tab-completion
 ### 3. 使用 gdb (Linux)
 
 ```bash
-gdb target/debug/bash-fzf-tab-completion
+gdb target/debug/bft
 (gdb) set environment READLINE_LINE="ls "
 (gdb) set environment READLINE_POINT=3
 (gdb) run
@@ -145,11 +145,11 @@ gdb target/debug/bash-fzf-tab-completion
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug bash-fzf-tab-completion",
+      "name": "Debug bft",
       "cargo": {
         "args": ["build"],
         "filter": {
-          "name": "bash-fzf-tab-completion",
+          "name": "bft",
           "kind": "bin"
         }
       },
@@ -172,21 +172,21 @@ gdb target/debug/bash-fzf-tab-completion
 READLINE_LINE="cat " READLINE_POINT=4 \
     cargo run -- --help 2>&1 || \
     READLINE_LINE="cat " READLINE_POINT=4 \
-    target/debug/bash-fzf-tab-completion
+    target/debug/bft
 ```
 
 ### 测试 Git 补全
 
 ```bash
 READLINE_LINE="git che" READLINE_POINT=7 \
-    target/debug/bash-fzf-tab-completion
+    target/debug/bft
 ```
 
 ### 测试目录补全
 
 ```bash
 READLINE_LINE="cd /tmp" READLINE_POINT=7 \
-    target/debug/bash-fzf-tab-completion
+    target/debug/bft
 ```
 
 ## 单元测试调试
@@ -214,12 +214,12 @@ fn test_parse_simple() {
 
 ```bash
 LOGFORTH_FILTER=debug READLINE_LINE="ls -la" READLINE_POINT=6 \
-    ./target/release/bash-fzf-tab-completion
+    ./target/release/bft
 ```
 
 输出：
 ```
-INFO Starting bash-fzf-tab-completion
+INFO Starting bft
 DEBUG Configuration: Config { ... }
 DEBUG Input: line='ls -la', point=6
 DEBUG Parsed command: ParsedResult { ... }
@@ -236,7 +236,7 @@ info!("Generated {} completion candidates", candidates.len());
 
 查看日志：
 ```bash
-LOGFORTH_FILTER=info ./target/release/bash-fzf-tab-completion
+LOGFORTH_FILTER=info ./target/release/bft
 ```
 
 ### 3. FZF 不显示或不工作
@@ -249,7 +249,7 @@ info!("Opening FZF with {} candidates", candidates.len());
 查看是否正确触发 FZF：
 ```bash
 LOGFORTH_FILTER=info READLINE_LINE="git " READLINE_POINT=4 \
-    ./target/release/bash-fzf-tab-completion
+    ./target/release/bft
 ```
 
 ## 日志级别说明
@@ -292,12 +292,12 @@ cargo flamegraph
 ```bash
 # 启用调试日志查看完整流程
 LOGFORTH_FILTER=debug READLINE_LINE="git che" READLINE_POINT=7 \
-    ./target/release/bash-fzf-tab-completion
+    ./target/release/bft
 ```
 
 示例输出：
 ```
-INFO Starting bash-fzf-tab-completion
+INFO Starting bft
 DEBUG Configuration: Config { fzf_tmux_height: Some("40%"), ... }
 DEBUG Input: line='git che', point=7
 DEBUG Parsed command: ParsedResult { words: ["git", "che"], ... }

@@ -1,4 +1,4 @@
-# Debug Guide - bash-fzf-tab-completion
+# Debug Guide - bft
 
 ## 快速开始
 
@@ -10,17 +10,17 @@
 
 ```bash
 # 启用 INFO 级别日志（推荐用于日常使用）
-RUST_LOG=info ./target/release/bash-fzf-tab-completion
+RUST_LOG=info ./target/release/bft
 
 # 启用 DEBUG 级别日志（推荐用于开发调试）
-RUST_LOG=debug ./target/release/bash-fzf-tab-completion
+RUST_LOG=debug ./target/release/bft
 
 # 启用 TRACE 级别日志（非常详细）
-RUST_LOG=trace ./target/release/bash-fzf-tab-completion
+RUST_LOG=trace ./target/release/bft
 
 # 不显示日志（生产环境推荐）
 unset RUST_LOG
-./target/release/bash-fzf-tab-completion
+./target/release/bft
 ```
 
 ### 与 bash 结合使用
@@ -28,7 +28,7 @@ unset RUST_LOG
 ```bash
 # 在测试时使用
 RUST_LOG=debug READLINE_LINE="ls " READLINE_POINT=3 \
-    ./target/release/bash-fzf-tab-completion
+    ./target/release/bft
 
 # 添加到 .bashrc
 export RUST_LOG=info
@@ -49,12 +49,12 @@ export RUST_LOG=info
 ### INFO 级别
 ```bash
 $ RUST_LOG=info READLINE_LINE="cd /t" READLINE_POINT=5 \
-    ./target/release/bash-fzf-tab-completion
+    ./target/release/bft
 ```
 
 输出：
 ```
-2026-01-14T02:14:55.888718+08:00[Asia/Shanghai]  INFO bash_fzf_tab_completion: main.rs:23 Starting bash-fzf-tab-completion
+2026-01-14T02:14:55.888718+08:00[Asia/Shanghai]  INFO bash_fzf_tab_completion: main.rs:23 Starting bft
 2026-01-14T02:14:55.897288+08:00[Asia/Shanghai]  INFO bash_fzf_tab_completion: main.rs:53 Generated 1 completion candidates
 2026-01-14T02:14:55.897422+08:00[Asia/Shanghai]  INFO bash_fzf_tab_completion: main.rs:100 Completion finished
 READLINE_LINE='cd /tmp/'
@@ -64,12 +64,12 @@ READLINE_POINT=8
 ### DEBUG 级别
 ```bash
 $ RUST_LOG=debug READLINE_LINE="git che" READLINE_POINT=7 \
-    ./target/release/bash-fzf-tab-completion
+    ./target/release/bft
 ```
 
 输出：
 ```
-2026-01-14T02:14:59.406438+08:00[Asia/Shanghai]  INFO bash_fzf_tab_completion: main.rs:23 Starting bash-fzf-tab-completion
+2026-01-14T02:14:59.406438+08:00[Asia/Shanghai]  INFO bash_fzf_tab_completion: main.rs:23 Starting bft
 2026-01-14T02:14:59.408798+08:00[Asia/Shanghai] DEBUG bash_fzf_tab_completion: main.rs:26 Configuration: Config { ... }
 2026-01-14T02:14:59.408852+08/00[Asia/Shanghai] DEBUG bash_fzf_tab_completion: main.rs:33 Input: line='git che', point=7
 2026-01-14T02:14:59.408978+08:00[Asia/Shanghai] DEBUG bash_fzf_tab_completion: main.rs:43 Parsed command: ParsedLine { ... }
@@ -88,7 +88,7 @@ $ RUST_LOG=debug READLINE_LINE="git che" READLINE_POINT=7 \
 
 ```bash
 RUST_LOG=debug READLINE_LINE="your-command" READLINE_POINT=10 \
-    ./target/release/bash-fzf-tab-completion
+    ./target/release/bft
 ```
 
 查看：
@@ -100,7 +100,7 @@ RUST_LOG=debug READLINE_LINE="your-command" READLINE_POINT=10 \
 
 ```bash
 RUST_LOG=info READLINE_LINE="ls " READLINE_POINT=3 \
-    ./target/release/bash-fzf-tab-completion
+    ./target/release/bft
 ```
 
 查看日志中的 "Opening FZF" 信息。
@@ -110,7 +110,7 @@ RUST_LOG=info READLINE_LINE="ls " READLINE_POINT=3 \
 ```bash
 # 重定向 stderr 到 /dev/null，只看补全结果
 RUST_LOG=debug READLINE_LINE="cd /t" READLINE_POINT=5 \
-    ./target/release/bash-fzf-tab-completion 2>/dev/null
+    ./target/release/bft 2>/dev/null
 
 # 输出（只有补全结果）：
 # READLINE_LINE='cd /tmp/'
@@ -122,7 +122,7 @@ RUST_LOG=debug READLINE_LINE="cd /t" READLINE_POINT=5 \
 ```bash
 # 重定向 stdout 到 /dev/null，只看日志
 RUST_LOG=debug READLINE_LINE="cd /t" READLINE_POINT=5 \
-    ./target/release/bash-fzf-tab-completion >/dev/null
+    ./target/release/bft >/dev/null
 
 # 输出（只有日志）：
 # 2026-01-14T02:14:59.406438+08:00[Asia/Shanghai]  INFO ...
@@ -133,7 +133,7 @@ RUST_LOG=debug READLINE_LINE="cd /t" READLINE_POINT=5 \
 ```bash
 # 将它们分别保存到不同文件
 RUST_LOG=debug READLINE_LINE="cd /t" READLINE_POINT=5 \
-    ./target/release/bash-fzf-tab-completion 1>output.txt 2>log.txt
+    ./target/release/bft 1>output.txt 2>log.txt
 
 # 查看补全输出
 cat output.txt
@@ -148,7 +148,7 @@ cat log.txt
 ### 6. 查看配置
 
 ```bash
-RUST_LOG=debug ./target/release/bash-fzf-tab-completion
+RUST_LOG=debug ./target/release/bft
 ```
 
 查看 Configuration 日志条目。
@@ -188,11 +188,11 @@ dbg!(&parsed);
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug bash-fzf-tab-completion",
+      "name": "Debug bft",
       "cargo": {
         "args": ["build"],
         "filter": {
-          "name": "bash-fzf-tab-completion",
+          "name": "bft",
           "kind": "bin"
         }
       },
