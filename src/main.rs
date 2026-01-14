@@ -124,7 +124,6 @@ fn main() -> Result<()> {
     debug!("After filtering: {} candidates", candidates.len());
 
     let selected = if candidates.len() > 1 {
-        // 创建选择器配置
         let selector_config = SelectorConfig {
             ctx: ctx.clone(),
             prompt: config.prompt.clone(),
@@ -134,7 +133,6 @@ fn main() -> Result<()> {
 
         info!("Opening selector with {} candidates", candidates.len());
 
-        // 使用dialoguer选择器
         let selector = crate::selector::dialoguer::DialoguerSelector::new();
         selector.select_one(&candidates, &ctx.current_word, &selector_config)?
     } else {

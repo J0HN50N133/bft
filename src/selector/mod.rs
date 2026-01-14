@@ -14,6 +14,8 @@ pub enum SelectorError {
     Cancelled,
     #[error("No candidates")]
     NoCandidates,
+    #[error("Error setting Ctrl-C handler")]
+    SettingCtrlCHandler(#[from] ctrlc::Error),
 }
 
 #[derive(Debug, Clone)]
