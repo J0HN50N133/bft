@@ -1,4 +1,4 @@
-use crate::selector::{theme, Selector, SelectorConfig, SelectorError};
+use crate::selector::{Selector, SelectorConfig, SelectorError, theme};
 use dialoguer::console::Term;
 use log::{debug, warn};
 

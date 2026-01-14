@@ -117,11 +117,7 @@ pub fn apply_filter(
         .iter()
         .filter(|c| {
             let matches = pattern.matches(c);
-            if invert {
-                !matches
-            } else {
-                matches
-            }
+            if invert { !matches } else { matches }
         })
         .cloned()
         .collect();

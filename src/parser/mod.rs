@@ -1,4 +1,4 @@
-use brush_parser::{tokenize_str, Token};
+use brush_parser::{Token, tokenize_str};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
