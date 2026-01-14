@@ -1,12 +1,9 @@
 use std::fmt;
 
-use brush_parser::prompt;
-use dialoguer::{
-    console::style,
-    theme::{ColorfulTheme, Theme},
-};
+use dialoguer::theme::{ColorfulTheme, Theme};
 use fuzzy_matcher::skim::SkimMatcherV2;
 
+#[allow(dead_code)]
 pub struct CustomSimpleTheme;
 impl Theme for CustomSimpleTheme {
     fn format_fuzzy_select_prompt(
