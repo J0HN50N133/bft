@@ -23,6 +23,7 @@ pub struct FzfConfig {
     pub border: Border,
     pub completion_sep: String,
     pub options: Vec<String>,
+    pub header: Option<String>,
 }
 
 impl Default for FzfConfig {
@@ -34,6 +35,7 @@ impl Default for FzfConfig {
             border: Border::None,
             completion_sep: "\x01".to_string(),
             options: Vec::new(),
+            header: None,
         }
     }
 }
@@ -78,6 +80,10 @@ pub fn select_with_fzf(
     custom_args.push("--with-nth=2,3".to_string());
     custom_args.push(format!("--height={}", config.height));
     custom_args.push("--reverse".to_string());
+
+    if let Some(header) = &config.header {
+        custom_args.push(format!("--header={}", header));
+    }
 
     builder.custom_args(custom_args);
 

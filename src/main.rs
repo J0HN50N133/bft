@@ -116,6 +116,7 @@ fn main() -> Result<()> {
             prompt: config.prompt.clone(),
             completion_sep: config.completion_sep.clone(),
             options: shlex::split(&config.fzf_completion_opts).unwrap_or_default(),
+            header: Some(readline_line.clone()),
             ..Default::default()
         };
 
