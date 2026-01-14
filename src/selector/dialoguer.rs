@@ -1,7 +1,5 @@
-use std::fmt;
-
-use crate::selector::{Selector, SelectorConfig, SelectorError};
-use dialoguer::{console::Term, theme::Theme};
+use crate::selector::{theme, Selector, SelectorConfig, SelectorError};
+use dialoguer::console::Term;
 use log::{debug, warn};
 
 #[derive(Default)]
@@ -10,24 +8,6 @@ pub struct DialoguerSelector;
 impl DialoguerSelector {
     pub fn new() -> Self {
         Default::default()
-    }
-}
-
-struct CustomSimpleTheme;
-impl Theme for CustomSimpleTheme {
-    fn format_fuzzy_select_prompt(
-        &self,
-        f: &mut dyn fmt::Write,
-        prompt: &str,
-        search_term: &str,
-        bytes_pos: usize,
-    ) -> fmt::Result {
-        if !prompt.is_empty() {
-            write!(f, "{prompt}")?;
-        }
-
-        let (st_head, st_tail) = search_term.split_at(bytes_pos);
-        write!(f, "{st_head}|{st_tail}")
     }
 }
 
@@ -63,7 +43,7 @@ impl Selector for DialoguerSelector {
 
         ctrlc::set_handler(|| {})?;
 
-        let theme = &CustomSimpleTheme;
+        let theme = &theme::CustomColorfulTheme::new();
 
         let result = dialoguer::FuzzySelect::with_theme(theme)
             .report(false)

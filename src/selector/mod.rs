@@ -37,4 +37,5 @@ pub trait Selector {
 
 // Re-export implementations
 pub mod dialoguer;
+mod theme;
 
