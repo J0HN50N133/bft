@@ -91,6 +91,7 @@ The tool can be configured via environment variables:
 | `FZF_TAB_COMPLETION_CANDIDATE_SEP` | Separator for completion candidates | `--` |
 | `FZF_TAB_COMPLETION_DIR_MARK` | Marker for directory candidates | `/` |
 | `FZF_TAB_COMPLETION_QUOTE_CHARS` | Characters requiring quotes | ` \t\n\"\'\`=<>&;|` |
+| `FZF_TAB_COMPLETION_SELECTOR` | Selector backend to use (`fzf` or `ratatui`) | `fzf` |
 
 ### Example Configuration
 

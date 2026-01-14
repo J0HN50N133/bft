@@ -1,18 +1,18 @@
 pub mod bash;
 pub mod completion;
 pub mod config;
-pub mod fzf;
 pub mod parser;
 pub mod quoting;
+pub mod selector;
 
 use anyhow::Result;
-use std::env;
 use log::{debug, info};
-
+use std::env;
+use std::rc::Rc;
 
 use crate::completion::CompletionContext;
 use crate::config::Config;
-use crate::fzf::FzfConfig;
+use crate::selector::{Selector, SelectorConfig};
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -48,7 +48,11 @@ fn main() -> Result<()> {
     let parsed = parser::parse_shell_line(&readline_line, readline_point)?;
     debug!("Parsed command: {:?}", parsed);
 
-    let ctx = CompletionContext::from_parsed(&parsed, readline_line.clone(), readline_point);
+    let ctx = Rc::new(CompletionContext::from_parsed(
+        &parsed,
+        readline_line.clone(),
+        readline_point,
+    ));
     debug!(
         "Command: '{}', current_word: '{}', current_word_idx: {}",
         ctx.command, ctx.current_word, ctx.current_word_idx
@@ -111,20 +115,21 @@ fn main() -> Result<()> {
     debug!("After filtering: {} candidates", candidates.len());
 
     let selected = if candidates.len() > 1 {
-        let fzf_config = FzfConfig {
-            height: config.fzf_tmux_height.unwrap_or_else(|| "40%".to_string()),
+        // 创建选择器配置
+        let selector_config = SelectorConfig {
+            ctx: ctx.clone(),
             prompt: config.prompt.clone(),
-            completion_sep: config.completion_sep.clone(),
-            options: shlex::split(&config.fzf_completion_opts).unwrap_or_default(),
+            height: config.fzf_tmux_height.unwrap_or_else(|| "40%".to_string()),
             header: Some(readline_line.clone()),
-            ..Default::default()
         };
 
-        info!("Opening FZF with {} candidates", candidates.len());
-        
-        fzf::select_with_fzf(&candidates, &ctx.current_word, &fzf_config)?
+        info!("Opening selector with {} candidates", candidates.len());
+
+        // 使用dialoguer选择器
+        let selector = crate::selector::dialoguer::DialoguerSelector::new();
+        selector.select_one(&candidates, &ctx.current_word, &selector_config)?
     } else {
-        debug!("Single candidate, skipping FZF");
+        debug!("Single candidate, skipping selector");
         candidates.first().cloned()
     };
 

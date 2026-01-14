@@ -1,5 +1,10 @@
 use std::env;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectorType {
+    Dialoguer,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub fzf_tmux_height: Option<String>,
@@ -10,6 +15,7 @@ pub struct Config {
     pub prompt: String,
     pub completion_sep: String,
     pub no_empty_cmd_completion: bool,
+    pub selector_type: SelectorType,
 }
 
 impl Default for Config {
@@ -23,6 +29,7 @@ impl Default for Config {
             prompt: "> ".to_string(),
             completion_sep: "\x01".to_string(),
             no_empty_cmd_completion: false,
+            selector_type: SelectorType::Dialoguer,
         }
     }
 }
@@ -54,6 +61,13 @@ impl Config {
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
+        let selector_type = env::var("FZF_TAB_COMPLETION_SELECTOR")
+            .map(|v| match v.to_lowercase().as_str() {
+                "dialoguer" => SelectorType::Dialoguer,
+                _ => SelectorType::Dialoguer, // Default to dialoguer
+            })
+            .unwrap_or(SelectorType::Dialoguer);
+
         Self {
             fzf_tmux_height,
             fzf_default_opts,
@@ -63,6 +77,7 @@ impl Config {
             prompt,
             completion_sep,
             no_empty_cmd_completion,
+            selector_type,
         }
     }
 }
