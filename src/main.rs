@@ -6,12 +6,9 @@ pub mod parser;
 pub mod quoting;
 
 use anyhow::Result;
-use crossterm::cursor::{RestorePosition, SavePosition};
-use crossterm::execute;
-use crossterm::terminal::{Clear, ClearType};
-use log::{debug, info};
 use std::env;
-use std::io::{self, Write};
+use log::{debug, info};
+
 
 use crate::completion::CompletionContext;
 use crate::config::Config;
@@ -47,8 +44,6 @@ fn main() -> Result<()> {
         debug!("Empty command line, skipping completion");
         return Ok(());
     }
-
-    show_loading();
 
     let parsed = parser::parse_shell_line(&readline_line, readline_point)?;
     debug!("Parsed command: {:?}", parsed);
@@ -125,12 +120,10 @@ fn main() -> Result<()> {
         };
 
         info!("Opening FZF with {} candidates", candidates.len());
-        clear_loading();
-
+        
         fzf::select_with_fzf(&candidates, &ctx.current_word, &fzf_config)?
     } else {
         debug!("Single candidate, skipping FZF");
-        clear_loading();
         candidates.first().cloned()
     };
 
@@ -154,19 +147,6 @@ fn main() -> Result<()> {
 
     info!("Completion finished");
     Ok(())
-}
-
-fn show_loading() {
-    let mut stderr = io::stderr();
-    let _ = execute!(stderr, SavePosition);
-    let _ = write!(stderr, "Loading matches ...");
-    let _ = stderr.flush();
-}
-
-fn clear_loading() {
-    let mut stderr = io::stderr();
-    let _ = execute!(stderr, RestorePosition, Clear(ClearType::CurrentLine));
-    let _ = stderr.flush();
 }
 
 fn insert_completion(
