@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn test_common_prefix() {
-        let candidates = vec!["file1", "file2"];
+        let candidates = ["file1", "file2"];
         let (res, _nospace, prefix) = find_common_prefix(
             &candidates.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
             0,
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_filter() {
-        let candidates = vec!["foo", "bar", "baz"];
+        let candidates = ["foo", "bar", "baz"];
         let filtered = apply_filter(
             &Some("!b*".to_string()),
             &candidates.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
