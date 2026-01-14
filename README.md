@@ -1,5 +1,7 @@
 # bft (Bash Fuzzy Tab)
 
+[![CI](https://github.com/yourusername/bash-fzf-tab-completion/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/bash-fzf-tab-completion/actions/workflows/ci.yml)
+
 A fast, interactive fuzzy tab completion for Bash, written in Rust.
 
 `bft` enhances your Bash experience by providing an interactive fuzzy selection menu for tab completions. It seamlessly integrates with [Carapace](https://carapace.sh/) to support completion for thousands of modern CLI tools, while falling back to standard Bash completion when needed.
