@@ -1,5 +1,5 @@
+use fzf_wrapped::{Border, FzfBuilder, Layout};
 use thiserror::Error;
-use fzf_wrapped::{FzfBuilder, Border, Layout};
 
 #[derive(Error, Debug)]
 pub enum FzfError {
@@ -38,7 +38,11 @@ impl Default for FzfConfig {
     }
 }
 
-pub fn select_with_fzf(candidates: &[String], current_word: &str, config: &FzfConfig) -> Result<Option<String>, FzfError> {
+pub fn select_with_fzf(
+    candidates: &[String],
+    current_word: &str,
+    config: &FzfConfig,
+) -> Result<Option<String>, FzfError> {
     if candidates.is_empty() {
         return Ok(None);
     }
@@ -56,17 +60,14 @@ pub fn select_with_fzf(candidates: &[String], current_word: &str, config: &FzfCo
 
         let formatted = format!(
             "{}{}{}{}{}{}{}",
-            cand,
-            sep,
-            "\x1b[37m", prefix, "\x1b[0m",
-            sep,
-            suffix
+            cand, sep, "\x1b[37m", prefix, "\x1b[0m", sep, suffix
         );
         formatted_candidates.push(formatted);
     }
 
     let mut builder = FzfBuilder::default();
-    builder.layout(config.layout)
+    builder
+        .layout(config.layout)
         .border(config.border)
         .prompt(config.prompt.clone());
 
@@ -81,7 +82,7 @@ pub fn select_with_fzf(candidates: &[String], current_word: &str, config: &FzfCo
     builder.custom_args(custom_args);
 
     let fzf = builder.build()?;
-    
+
     let output = fzf_wrapped::run_with_output(fzf, formatted_candidates);
 
     if let Some(selection) = output {

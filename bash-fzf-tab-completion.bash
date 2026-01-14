@@ -1,6 +1,6 @@
 _fzf_bash_completion_rust() {
     local output
-    output=$(bash-fzf-tab-completion)
+    output=$(bash-fzf-tab-completion "$READLINE_LINE" "$READLINE_POINT")
     local exit_code=$?
 
     if [ $exit_code -eq 0 ] && [ -n "$output" ]; then

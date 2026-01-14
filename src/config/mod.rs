@@ -32,20 +32,20 @@ impl Config {
         let fzf_tmux_height = env::var("FZF_TMUX_HEIGHT").ok();
         let fzf_default_opts = env::var("FZF_DEFAULT_OPTS").unwrap_or_default();
         let fzf_completion_opts = env::var("FZF_COMPLETION_OPTS").unwrap_or_default();
-        
+
         let auto_common_prefix = env::var("FZF_COMPLETION_AUTO_COMMON_PREFIX")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(true); // Default to true as per common behavior, though bash script checks explicit "true"
-            
+
         let auto_common_prefix_part = env::var("FZF_COMPLETION_AUTO_COMMON_PREFIX_PART")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
         let prompt = env::var("FZF_TAB_COMPLETION_PROMPT").unwrap_or_else(|_| "> ".to_string());
-        
+
         // _FZF_COMPLETION_SEP=$'\x01' in bash script
         let completion_sep = env::var("_FZF_COMPLETION_SEP").unwrap_or_else(|_| "\x01".to_string());
-        
+
         // shopt -q no_empty_cmd_completion
         // In Rust we can't check shopt directly easily, so we rely on an env var passing it through
         // or just a config flag. For now, let's assume it might be passed or default false.

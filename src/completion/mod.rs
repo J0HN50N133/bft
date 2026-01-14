@@ -1,6 +1,8 @@
-use thiserror::Error;
-use crate::parser::ParsedLine;
 use crate::bash;
+use crate::parser::ParsedLine;
+use thiserror::Error;
+
+pub mod carapace;
 
 #[derive(Error, Debug)]
 pub enum CompletionError {
@@ -30,7 +32,11 @@ pub struct CompletionContext {
 impl CompletionContext {
     pub fn from_parsed(parsed: &ParsedLine, line: String, point: usize) -> Self {
         let command = parsed.words.first().cloned().unwrap_or_default();
-        let current_word = parsed.words.get(parsed.current_word_index).cloned().unwrap_or_default();
+        let current_word = parsed
+            .words
+            .get(parsed.current_word_index)
+            .cloned()
+            .unwrap_or_default();
         let previous_word = if parsed.current_word_index > 0 {
             parsed.words.get(parsed.current_word_index - 1).cloned()
         } else {
@@ -75,19 +81,22 @@ pub struct CompletionSpec {
 
 pub fn resolve_compspec(command: &str) -> Result<CompletionSpec, CompletionError> {
     if command.is_empty() {
-        return Ok(CompletionSpec::default()); 
+        return Ok(CompletionSpec::default());
     }
 
     if let Some(spec) = bash::query_complete(command)? {
         Ok(spec)
     } else {
         let mut spec = CompletionSpec::default();
-        spec.options.default = true; 
+        spec.options.default = true;
         Ok(spec)
     }
 }
 
-pub fn execute_completion(spec: &CompletionSpec, ctx: &CompletionContext) -> Result<Vec<String>, CompletionError> {
+pub fn execute_completion(
+    spec: &CompletionSpec,
+    ctx: &CompletionContext,
+) -> Result<Vec<String>, CompletionError> {
     let mut candidates = Vec::new();
     let word = &ctx.current_word;
 
@@ -98,6 +107,16 @@ pub fn execute_completion(spec: &CompletionSpec, ctx: &CompletionContext) -> Res
         Ok(bash::execute_compgen(&args)?)
     };
 
+    if let Some(function) = &spec.function {
+        candidates.extend(bash::execute_completion_function(
+            function,
+            &ctx.command,
+            word,
+            ctx.previous_word.as_deref(),
+            &ctx.words,
+        )?);
+    }
+
     if let Some(wordlist) = &spec.wordlist {
         candidates.extend(run_compgen(vec!["-W".to_string(), wordlist.clone()])?);
     }
@@ -105,7 +124,7 @@ pub fn execute_completion(spec: &CompletionSpec, ctx: &CompletionContext) -> Res
     if let Some(cmd) = &spec.command {
         candidates.extend(run_compgen(vec!["-C".to_string(), cmd.clone()])?);
     }
-    
+
     if let Some(glob) = &spec.glob_pattern {
         candidates.extend(run_compgen(vec!["-G".to_string(), glob.clone()])?);
     }

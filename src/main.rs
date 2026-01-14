@@ -1,54 +1,119 @@
-pub mod parser;
-pub mod completion;
-pub mod fzf;
-pub mod quoting;
 pub mod bash;
+pub mod completion;
 pub mod config;
+pub mod fzf;
+pub mod parser;
+pub mod quoting;
 
+use anyhow::Result;
+use crossterm::cursor::{RestorePosition, SavePosition};
+use crossterm::execute;
+use crossterm::terminal::{Clear, ClearType};
+use log::{debug, info};
 use std::env;
 use std::io::{self, Write};
-use anyhow::{Context, Result};
-use crossterm::cursor::{SavePosition, RestorePosition};
-use crossterm::terminal::{Clear, ClearType};
-use crossterm::execute;
 
-use crate::config::Config;
 use crate::completion::CompletionContext;
+use crate::config::Config;
 use crate::fzf::FzfConfig;
 
 fn main() -> Result<()> {
+    let args: Vec<String> = env::args().collect();
+
+    let readline_line = if args.len() >= 2 {
+        args[1].clone()
+    } else {
+        env::var("READLINE_LINE").unwrap_or_default()
+    };
+
+    let readline_point: usize = if args.len() >= 3 {
+        args[2].parse().unwrap_or(0)
+    } else {
+        env::var("READLINE_POINT")
+            .unwrap_or_else(|_| "0".to_string())
+            .parse()
+            .unwrap_or(0)
+    };
+
+    logforth::stderr().apply();
+
+    info!("Starting bash-fzf-tab-completion");
+
     let config = Config::from_env();
-    let readline_line = env::var("READLINE_LINE").unwrap_or_default();
-    let readline_point: usize = env::var("READLINE_POINT")
-        .unwrap_or_else(|_| "0".to_string())
-        .parse()
-        .unwrap_or(0);
+
+    debug!("Input: line='{}', point={}", readline_line, readline_point);
 
     if config.no_empty_cmd_completion && readline_line.trim().is_empty() {
+        debug!("Empty command line, skipping completion");
         return Ok(());
     }
 
     show_loading();
 
     let parsed = parser::parse_shell_line(&readline_line, readline_point)?;
+    debug!("Parsed command: {:?}", parsed);
+
     let ctx = CompletionContext::from_parsed(&parsed, readline_line.clone(), readline_point);
+    debug!(
+        "Command: '{}', current_word: '{}', current_word_idx: {}",
+        ctx.command, ctx.current_word, ctx.current_word_idx
+    );
 
-    let spec = completion::resolve_compspec(&ctx.command)?;
-    let mut candidates = completion::execute_completion(&spec, &ctx)?;
+    let mut candidates = Vec::new();
+    let mut spec = completion::CompletionSpec::default();
+    let mut used_carapace = false;
 
-    candidates = quoting::apply_filter(&spec.filter, &candidates, &ctx.current_word)?;
+    // Try Carapace first
+    if let Ok(Some(items)) =
+        completion::carapace::CarapaceProvider::fetch_suggestions(&ctx.command, &ctx.words)
+    {
+        if !items.is_empty() {
+            info!(
+                "Using Carapace provider for '{}' ({} items)",
+                ctx.command,
+                items.len()
+            );
+            candidates = items.into_iter().map(|i| i.value).collect();
+            used_carapace = true;
+        } else {
+            debug!(
+                "Carapace returned 0 items for '{}', falling back to Bash",
+                ctx.command
+            );
+        }
+    } else {
+        debug!(
+            "Carapace provider failed or not available for '{}'",
+            ctx.command
+        );
+    }
 
-    if spec.options.filenames || spec.options.default || spec.options.bashdefault {
-        if spec.options.filenames || spec.options.dirnames || spec.options.default {
-             candidates = quoting::mark_directories(candidates);
+    // Fallback to Bash
+    if !used_carapace {
+        spec = completion::resolve_compspec(&ctx.command)?;
+        debug!("Completion spec: {:?}", spec);
+
+        candidates = completion::execute_completion(&spec, &ctx)?;
+        info!("Generated {} completion candidates", candidates.len());
+
+        candidates = quoting::apply_filter(&spec.filter, &candidates, &ctx.current_word)?;
+
+        if spec.options.filenames
+            || spec.options.default
+            || spec.options.bashdefault && spec.options.dirnames
+        {
+            candidates = quoting::mark_directories(candidates);
         }
     }
 
+    // Common Prefix Logic
     let (candidates, nospace, _prefix) = quoting::find_common_prefix(
-        &candidates, 
+        &candidates,
         ctx.current_word.len(),
-        config.auto_common_prefix_part
+        config.auto_common_prefix_part,
     );
+
+    debug!("After filtering: {} candidates", candidates.len());
 
     let selected = if candidates.len() > 1 {
         let fzf_config = FzfConfig {
@@ -58,23 +123,36 @@ fn main() -> Result<()> {
             options: shlex::split(&config.fzf_completion_opts).unwrap_or_default(),
             ..Default::default()
         };
-        
+
+        info!("Opening FZF with {} candidates", candidates.len());
         clear_loading();
-        
+
         fzf::select_with_fzf(&candidates, &ctx.current_word, &fzf_config)?
     } else {
+        debug!("Single candidate, skipping FZF");
         clear_loading();
         candidates.first().cloned()
     };
 
     if let Some(mut completion) = selected {
+        debug!("Selected completion: '{}'", completion);
+
         if spec.options.filenames || spec.options.default || spec.options.bashdefault {
-             completion = quoting::quote_filename(&completion, true);
+            completion = quoting::quote_filename(&completion, true);
         }
-        
-        insert_completion(&readline_line, readline_point, &completion, nospace, &ctx.current_word)?;
+
+        insert_completion(
+            &readline_line,
+            readline_point,
+            &completion,
+            nospace,
+            &ctx.current_word,
+        )?;
+    } else {
+        info!("No completion selected");
     }
 
+    info!("Completion finished");
     Ok(())
 }
 
@@ -96,27 +174,25 @@ fn insert_completion(
     point: usize,
     completion: &str,
     nospace: bool,
-    current_word: &str
+    current_word: &str,
 ) -> Result<()> {
     let prefix_len = current_word.len();
-    
+
     let start_index = point.saturating_sub(prefix_len);
-    
+
     let before = &line[..start_index];
     let after = &line[point..];
-    
+
     let mut new_line = format!("{}{}{}", before, completion, after);
     let mut new_point = start_index + completion.len();
-    
-    if !nospace {
-        if !completion.ends_with('/') {
-            new_line.insert(new_point, ' ');
-            new_point += 1;
-        }
+
+    if !nospace && !completion.ends_with('/') {
+        new_line.insert(new_point, ' ');
+        new_point += 1;
     }
-    
+
     println!("READLINE_LINE='{}'", new_line);
     println!("READLINE_POINT={}", new_point);
-    
+
     Ok(())
 }

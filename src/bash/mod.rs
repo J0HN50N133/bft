@@ -1,6 +1,6 @@
-use thiserror::Error;
+use crate::completion::{CompletionOptions, CompletionSpec};
 use std::process::Command;
-use crate::completion::{CompletionSpec, CompletionOptions};
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum BashError {
@@ -15,8 +15,9 @@ pub enum BashError {
 }
 
 pub fn query_complete(command: &str) -> Result<Option<CompletionSpec>, BashError> {
+    let quoted_cmd = shlex::try_quote(command).map_err(|e| BashError::Other(e.to_string()))?;
     let output = Command::new("bash")
-        .args(["-c", &format!("complete -p -- {}", shlex::quote(command))])
+        .args(["-c", &format!("complete -p -- {}", quoted_cmd)])
         .output()?;
 
     if !output.status.success() {
@@ -41,15 +42,59 @@ pub fn execute_compgen(args: &[String]) -> Result<Vec<String>, BashError> {
     Ok(stdout.lines().map(|s| s.to_string()).collect())
 }
 
+pub fn execute_completion_function(
+    function: &str,
+    command: &str,
+    word: &str,
+    _previous_word: Option<&str>,
+    words: &[String],
+) -> Result<Vec<String>, BashError> {
+    let words_str = words.join(" ");
+
+    let script = format!(
+        r#"
+export COMP_WORDS="{}"
+export COMP_CWORD={}
+export COMP_LINE="{} {}"
+export COMP_POINT={}
+export COMP_KEY=""
+export COMP_TYPE="9"
+
+COMPREPLY=()
+"{}" 2>/dev/null
+
+for reply in "${{COMPREPLY[@]}}"; do
+    echo "$reply"
+done
+"#,
+        words_str,
+        words.len().saturating_sub(1),
+        command,
+        word,
+        command.len() + word.len() + 1,
+        function
+    );
+
+    let output = Command::new("bash").arg("-c").arg(&script).output()?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.lines().map(|s| s.to_string()).collect())
+}
+
 fn parse_compspec_output(output: &str) -> Result<Option<CompletionSpec>, BashError> {
-    let args = shlex::split(output).ok_or_else(|| BashError::ParseError("Failed to split output".to_string()))?;
-    
+    let args = shlex::split(output)
+        .ok_or_else(|| BashError::ParseError("Failed to split output".to_string()))?;
+
     if args.first().map(|s| s.as_str()) != Some("complete") {
         return Ok(None);
     }
 
     let mut spec = CompletionSpec::default();
-    
+
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -95,7 +140,7 @@ fn parse_compspec_output(output: &str) -> Result<Option<CompletionSpec>, BashErr
                     parse_option(&args[i], &mut spec.options);
                 }
             }
-            _ => {} 
+            _ => {}
         }
         i += 1;
     }
