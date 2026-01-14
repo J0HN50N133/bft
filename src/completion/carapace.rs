@@ -48,7 +48,7 @@ impl CarapaceProvider {
         let output: CarapaceOutput = match serde_json::from_str(&output_str) {
             Ok(o) => o,
             Err(e) => {
-                eprintln!("Failed to parse carapace output: {}", e);
+                debug!("Failed to parse carapace output: {}", e);
                 debug!("Carapace output was: {}", output_str);
                 return Ok(None);
             }

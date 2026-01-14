@@ -89,10 +89,19 @@ fn main() -> Result<()> {
 
     // Fallback to Bash
     if !used_carapace {
+        info!("Using Bash completion for command '{}'", ctx.command);
         spec = completion::resolve_compspec(&ctx.command)?;
         debug!("Completion spec: {:?}", spec);
 
-        candidates = completion::execute_completion(&spec, &ctx)?;
+        // Special handling for command name completion (first word)
+        if ctx.current_word_idx == 0 && spec.function.is_none() && spec.wordlist.is_none() && spec.command.is_none() && spec.glob_pattern.is_none() {
+            info!("Using command completion for command name '{}'", ctx.current_word);
+            // Use compgen -c to get command names from PATH
+            candidates = bash::execute_compgen(&["-c".to_string(), "--".to_string(), ctx.current_word.clone()])?;
+        } else {
+            candidates = completion::execute_completion(&spec, &ctx)?;
+        }
+        
         info!("Generated {} completion candidates", candidates.len());
 
         candidates = quoting::apply_filter(&spec.filter, &candidates, &ctx.current_word)?;
