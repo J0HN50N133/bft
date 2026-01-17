@@ -14,10 +14,21 @@ use crate::completion::CompletionContext;
 use crate::config::Config;
 use crate::selector::{Selector, SelectorConfig};
 
+const ARG_INIT_SCRIPT: &str = "--init-script";
+const ENV_READLINE_LINE: &str = "READLINE_LINE";
+const ENV_READLINE_POINT: &str = "READLINE_POINT";
+const DEFAULT_POINT_VALUE: &str = "0";
+const DEFAULT_USIZE: usize = 0;
+const COMPGEN_ARG_COMMAND: &str = "-c";
+const COMPGEN_ARG_SEPARATOR: &str = "--";
+const OUTPUT_READLINE_LINE_FORMAT: &str = "READLINE_LINE='{}'";
+const OUTPUT_READLINE_POINT_FORMAT: &str = "READLINE_POINT={}";
+const DEFAULT_FZF_TMUX_HEIGHT: &str = "40%";
+
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() > 1 && args[1] == "--init-script" {
+    if args.len() > 1 && args[1] == ARG_INIT_SCRIPT {
         print!("{}", include_str!("../scripts/bft.bash"));
         return Ok(());
     }
@@ -25,16 +36,16 @@ fn main() -> Result<()> {
     let readline_line = if args.len() >= 2 {
         args[1].clone()
     } else {
-        env::var("READLINE_LINE").unwrap_or_default()
+        env::var(ENV_READLINE_LINE).unwrap_or_default()
     };
 
     let readline_point: usize = if args.len() >= 3 {
-        args[2].parse().unwrap_or(0)
+        args[2].parse().unwrap_or(DEFAULT_USIZE)
     } else {
-        env::var("READLINE_POINT")
-            .unwrap_or_else(|_| "0".to_string())
+        env::var(ENV_READLINE_POINT)
+            .unwrap_or_else(|_| DEFAULT_POINT_VALUE.to_string())
             .parse()
-            .unwrap_or(0)
+            .unwrap_or(DEFAULT_USIZE)
     };
 
     env_logger::init();
@@ -64,7 +75,7 @@ fn main() -> Result<()> {
     );
 
     let mut candidates = Vec::new();
-    let mut spec = completion::CompletionSpec::default();
+    let mut completion_spec = completion::CompletionSpec::default();
     let mut used_carapace = false;
 
     // Environment variable completion
@@ -102,41 +113,41 @@ fn main() -> Result<()> {
     // Fallback to Bash
     if !used_carapace && !ctx.current_word.starts_with('$') {
         info!("Using Bash completion for command '{}'", ctx.command);
-        spec = completion::resolve_compspec(&ctx.command)?;
-        debug!("Completion spec: {:?}", spec);
+        completion_spec = completion::resolve_compspec(&ctx.command)?;
+        debug!("Completion spec: {:?}", completion_spec);
 
         if ctx.current_word_idx == 0
-            && spec.function.is_none()
-            && spec.wordlist.is_none()
-            && spec.command.is_none()
-            && spec.glob_pattern.is_none()
+            && completion_spec.function.is_none()
+            && completion_spec.wordlist.is_none()
+            && completion_spec.command.is_none()
+            && completion_spec.glob_pattern.is_none()
         {
             info!(
                 "Using command completion for command name '{}'",
                 ctx.current_word
             );
             candidates = bash::execute_compgen(&[
-                "-c".to_string(),
-                "--".to_string(),
+                COMPGEN_ARG_COMMAND.to_string(),
+                COMPGEN_ARG_SEPARATOR.to_string(),
                 ctx.current_word.clone(),
             ])?;
         } else {
-            candidates = completion::execute_completion(&spec, &ctx)?;
+            candidates = completion::execute_completion(&completion_spec, &ctx)?;
         }
 
         info!("Generated {} completion candidates", candidates.len());
 
-        candidates = quoting::apply_filter(&spec.filter, &candidates, &ctx.current_word)?;
+        candidates = quoting::apply_filter(&completion_spec.filter, &candidates, &ctx.current_word)?;
 
-        if spec.options.filenames
-            || spec.options.default
-            || spec.options.bashdefault && spec.options.dirnames
+        if completion_spec.options.filenames
+            || completion_spec.options.default
+            || completion_spec.options.bashdefault && completion_spec.options.dirnames
         {
             candidates = quoting::mark_directories(candidates);
         }
     }
 
-    let (candidates, nospace, _prefix) = quoting::find_common_prefix(
+    let (candidates, no_space_after_completion, _prefix) = quoting::find_common_prefix(
         &candidates,
         ctx.current_word.len(),
         config.auto_common_prefix_part,
@@ -148,7 +159,10 @@ fn main() -> Result<()> {
         let selector_config = SelectorConfig {
             ctx: ctx.clone(),
             prompt: config.prompt.clone(),
-            height: config.fzf_tmux_height.unwrap_or_else(|| "40%".to_string()),
+            height: config
+                .fzf_tmux_height
+                .clone()
+                .unwrap_or_else(|| DEFAULT_FZF_TMUX_HEIGHT.to_string()),
             header: Some(readline_line.clone()),
         };
 
@@ -164,7 +178,10 @@ fn main() -> Result<()> {
     if let Some(mut completion) = selected {
         debug!("Selected completion: '{}'", completion);
 
-        if spec.options.filenames || spec.options.default || spec.options.bashdefault {
+        if completion_spec.options.filenames
+            || completion_spec.options.default
+            || completion_spec.options.bashdefault
+        {
             completion = quoting::quote_filename(&completion, true);
         }
 
@@ -172,7 +189,7 @@ fn main() -> Result<()> {
             &readline_line,
             readline_point,
             &completion,
-            nospace,
+            no_space_after_completion,
             &ctx.current_word,
         )?;
     } else {
@@ -190,16 +207,16 @@ fn insert_completion(
     nospace: bool,
     current_word: &str,
 ) -> Result<()> {
-    let prefix_char_len = current_word.chars().count();
-    let point_char = line.chars().take(point).count();
+    let current_word_char_count = current_word.chars().count();
+    let cursor_position_chars = line.chars().take(point).count();
 
-    let start_char = point_char.saturating_sub(prefix_char_len);
+    let replacement_start_char_index = cursor_position_chars.saturating_sub(current_word_char_count);
 
-    let before: String = line.chars().take(start_char).collect();
-    let after: String = line.chars().skip(point_char).collect();
+    let before: String = line.chars().take(replacement_start_char_index).collect();
+    let after: String = line.chars().skip(cursor_position_chars).collect();
 
     let new_line = format!("{}{}{}", before, completion, after);
-    let new_point = start_char + completion.chars().count();
+    let new_point = replacement_start_char_index + completion.chars().count();
 
     if !nospace && !completion.ends_with('/') {
         let new_point_byte: usize = new_line.chars().take(new_point).map(|c| c.len_utf8()).sum();
