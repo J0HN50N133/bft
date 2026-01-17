@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn test_insert_completion_ascii() {
         let line = "ls file";
-        let point = 7;
+        let point = line.len();
         let completion = "file.txt";
         let current_word = "file";
 
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn test_insert_completion_chinese() {
         let line = "ls 中文";
-        let point = 9;
+        let point = line.len();
         let completion = "test.txt";
         let current_word = "中文";
 
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn test_insert_completion_mixed() {
         let line = "git checkout feat";
-        let point = 14;
+        let point = line.len();
         let completion = "feature-中文";
         let current_word = "feat";
 
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn test_insert_completion_nospace() {
         let line = "cd path";
-        let point = 6;
+        let point = line.len();
         let completion = "/";
         let current_word = "path";
 
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn test_insert_completion_empty_word() {
         let line = "ls ";
-        let point = 3;
+        let point = line.len();
         let completion = "file.txt";
         let current_word = "";
 
@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn test_insert_completion_trailing_utf8() {
         let line = "ls 中文";
-        let point = 7;
+        let point = line.chars().take(4).collect::<String>().len();
         let completion = "file.txt";
         let current_word = "中";
 
