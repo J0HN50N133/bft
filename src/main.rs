@@ -224,7 +224,8 @@ fn insert_completion(
         let mut new_line_bytes: Vec<u8> = new_line.bytes().collect();
         new_line_bytes.insert(new_point_byte, b' ');
 
-        let new_line_with_space = String::from_utf8(new_line_bytes).unwrap();
+        let new_line_with_space = String::from_utf8(new_line_bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to convert line to UTF-8: {}", e))?;
         let final_point = new_point_byte + 1;
 
         println!("READLINE_LINE='{}'", new_line_with_space);
