@@ -1,5 +1,6 @@
 use crate::selector::{Selector, SelectorConfig, SelectorError, theme};
 use dialoguer::console::Term;
+use fuzzy_matcher::FuzzyMatcher;
 use log::{debug, warn};
 
 #[derive(Default)]
@@ -19,8 +20,9 @@ impl Selector for DialoguerSelector {
         config: &SelectorConfig,
     ) -> Result<Option<String>, SelectorError> {
         debug!(
-            "DialoguerSelector::select_one called with {} candidates",
-            candidates.len()
+            "DialoguerSelector::select_one called with {} candidates (fuzzy={})",
+            candidates.len(),
+            config.fuzzy
         );
 
         if candidates.is_empty() {
@@ -33,8 +35,6 @@ impl Selector for DialoguerSelector {
             return Ok(Some(candidates[0].clone()));
         }
 
-        let candidate_refs: Vec<&str> = candidates.iter().map(|s| s.as_str()).collect();
-
         let prompt = config
             .ctx
             .line
@@ -45,21 +45,52 @@ impl Selector for DialoguerSelector {
 
         let theme = &theme::CustomColorfulTheme::new();
 
-        let result = dialoguer::FuzzySelect::with_theme(theme)
+        // Apply fuzzy filtering while preserving input order (history first, then carapace)
+        let filtered_candidates: Vec<String> = if config.fuzzy && !current_word.is_empty() {
+            let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
+            let mut scored: Vec<(i64, usize, String)> = candidates
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, cand)| {
+                    matcher
+                        .fuzzy_match(cand, current_word)
+                        .map(|score| (score, idx, cand.clone()))
+                })
+                .collect();
+
+            // Sort by score (descending), but preserve original order for same scores
+            scored.sort_by_key(|(score, idx, _)| (-score, *idx));
+
+            scored.into_iter().map(|(_, _, cand)| cand).collect()
+        } else {
+            candidates.to_vec()
+        };
+
+        if filtered_candidates.is_empty() {
+            debug!("No candidates after fuzzy filtering");
+            return Ok(None);
+        }
+
+        debug!(
+            "Filtered from {} to {} candidates",
+            candidates.len(),
+            filtered_candidates.len()
+        );
+
+        let select_result = dialoguer::Select::with_theme(theme)
             .report(false)
-            .with_initial_text(current_word)
             .with_prompt(prompt)
             .default(0)
-            .items(&candidate_refs)
+            .items(&filtered_candidates)
             .interact_opt();
 
-        if result.is_err() {
+        if select_result.is_err() {
             let _ = Term::stderr().show_cursor();
         }
 
-        match result {
+        match select_result {
             Ok(Some(index)) => {
-                let selected: &String = &candidates[index];
+                let selected: &String = &filtered_candidates[index];
                 debug!("Selected candidate: {}", selected);
                 Ok(Some(selected.clone()))
             }

@@ -69,13 +69,15 @@ pub fn parse_shell_line(input: &str, cursor_pos: usize) -> Result<ParsedLine, Pa
         let start_char = byte_to_char_index(input, loc.start.index);
         let end_char = byte_to_char_index(input, loc.end.index);
 
-        if start_char > last_end_char {
-            if !found_cursor && cursor_char_pos >= last_end_char && cursor_char_pos < start_char {
-                words.push(String::new());
-                raw_words.push(String::new());
-                current_word_index = words.len() - 1;
-                found_cursor = true;
-            }
+        if start_char > last_end_char
+            && !found_cursor
+            && cursor_char_pos >= last_end_char
+            && cursor_char_pos < start_char
+        {
+            words.push(String::new());
+            raw_words.push(String::new());
+            current_word_index = words.len() - 1;
+            found_cursor = true;
         }
 
         words.push(unquote_string(raw));
@@ -136,11 +138,11 @@ pub fn find_last_pipe_index(words: &[String]) -> Option<usize> {
 pub fn get_command_after_pipe(words: &[String]) -> Option<(String, Vec<String>)> {
     let pipe_idx = find_last_pipe_index(words)?;
     let cmd_idx = pipe_idx + 1;
-    
+
     if cmd_idx >= words.len() {
         return None;
     }
-    
+
     let command = words[cmd_idx].clone();
     let args = words[cmd_idx + 1..].to_vec();
     Some((command, args))
@@ -213,23 +215,35 @@ mod tests {
 
     #[test]
     fn test_find_last_pipe_index() {
-        let words = vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "grep".to_string()];
+        let words = vec![
+            "cat".to_string(),
+            "foo.txt".to_string(),
+            "|".to_string(),
+            "grep".to_string(),
+        ];
         assert_eq!(find_last_pipe_index(&words), Some(2));
-        
+
         let words_no_pipe = vec!["ls".to_string(), "-la".to_string()];
         assert_eq!(find_last_pipe_index(&words_no_pipe), None);
     }
 
     #[test]
     fn test_get_command_after_pipe() {
-        let words = vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "grep".to_string(), "bar".to_string()];
+        let words = vec![
+            "cat".to_string(),
+            "foo.txt".to_string(),
+            "|".to_string(),
+            "grep".to_string(),
+            "bar".to_string(),
+        ];
         let result = get_command_after_pipe(&words);
         assert_eq!(result, Some(("grep".to_string(), vec!["bar".to_string()])));
-        
+
         let words_no_pipe = vec!["ls".to_string(), "-la".to_string()];
         assert_eq!(get_command_after_pipe(&words_no_pipe), None);
-        
-        let words_empty_after_pipe = vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string()];
+
+        let words_empty_after_pipe =
+            vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string()];
         assert_eq!(get_command_after_pipe(&words_empty_after_pipe), None);
     }
 }

@@ -62,7 +62,8 @@ impl CompletionContext {
         };
 
         let pipe_idx = parser::find_last_pipe_index(&parsed.words);
-        let (is_after_pipe, previous_command, pipe_command_args) = if let Some(pipe_idx) = pipe_idx {
+        let (is_after_pipe, previous_command, pipe_command_args) = if let Some(pipe_idx) = pipe_idx
+        {
             let cmd_idx = pipe_idx + 1;
             if parsed.current_word_index > pipe_idx {
                 let prev_cmd = parsed.words.get(pipe_idx.saturating_sub(1)).cloned();
@@ -107,9 +108,8 @@ impl CompletionContext {
     pub fn is_completing_pipe_command(&self) -> bool {
         self.is_after_pipe
             && self.current_word_idx > 0
-            && parser::find_last_pipe_index(&self.words).map_or(false, |pipe_idx| {
-                self.current_word_idx == pipe_idx + 1
-            })
+            && parser::find_last_pipe_index(&self.words)
+                .is_some_and(|pipe_idx| self.current_word_idx == pipe_idx + 1)
     }
 }
 
@@ -139,15 +139,16 @@ pub struct CompletionSpec {
 
 /// Trait for completion providers
 pub trait CompletionProvider: Send {
-    fn name(&self) -> &'static str;
-    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError>;
+    fn name(&self) -> &str;
+    fn try_complete(&self, ctx: &CompletionContext)
+    -> Result<Option<Vec<String>>, CompletionError>;
 }
 
 /// Result of a completion attempt
 #[derive(Debug, Clone)]
 pub struct CompletionResult {
     pub candidates: Vec<String>,
-    pub used_provider: &'static str,
+    pub used_provider: String,
     pub spec: CompletionSpec,
 }
 
@@ -160,6 +161,12 @@ impl CompletionResult {
 /// Carapace-based completion provider
 pub struct CarapaceProvider;
 
+impl Default for CarapaceProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CarapaceProvider {
     pub fn new() -> Self {
         Self
@@ -171,7 +178,10 @@ impl CompletionProvider for CarapaceProvider {
         "carapace"
     }
 
-    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError> {
+    fn try_complete(
+        &self,
+        ctx: &CompletionContext,
+    ) -> Result<Option<Vec<String>>, CompletionError> {
         let args = if ctx.is_after_pipe {
             std::iter::once(ctx.command.clone())
                 .chain(ctx.pipe_command_args.clone())
@@ -189,6 +199,12 @@ impl CompletionProvider for CarapaceProvider {
 /// Bash-based completion provider
 pub struct BashProvider;
 
+impl Default for BashProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BashProvider {
     pub fn new() -> Self {
         Self
@@ -200,7 +216,10 @@ impl CompletionProvider for BashProvider {
         "bash"
     }
 
-    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError> {
+    fn try_complete(
+        &self,
+        ctx: &CompletionContext,
+    ) -> Result<Option<Vec<String>>, CompletionError> {
         let spec = resolve_compspec(&ctx.command)?;
 
         if ctx.is_completing_pipe_command() || is_command_name_completion(&spec, ctx) {
@@ -288,6 +307,12 @@ pub fn execute_completion(
 /// Environment variable completion provider
 pub struct EnvVarProvider;
 
+impl Default for EnvVarProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnvVarProvider {
     pub fn new() -> Self {
         Self
@@ -299,7 +324,10 @@ impl CompletionProvider for EnvVarProvider {
         "envvar"
     }
 
-    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError> {
+    fn try_complete(
+        &self,
+        ctx: &CompletionContext,
+    ) -> Result<Option<Vec<String>>, CompletionError> {
         if ctx.current_word.starts_with('$') {
             let var_prefix = ctx.current_word[1..].to_string();
             Ok(Some(get_env_variables(&var_prefix)))
@@ -320,6 +348,12 @@ pub fn get_env_variables(prefix: &str) -> Vec<String> {
 /// History-based completion provider
 pub struct HistoryProvider;
 
+impl Default for HistoryProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HistoryProvider {
     pub fn new() -> Self {
         Self
@@ -331,18 +365,22 @@ impl CompletionProvider for HistoryProvider {
         "history"
     }
 
-    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError> {
-        // Only complete from history when at command position (current_word_idx == 0)
-        // or when the current word could be a partial command
-        if ctx.current_word_idx == 0 || ctx.command.is_empty() {
-            let prefix = &ctx.current_word;
-            if !prefix.is_empty() {
-                let matches = crate::bash::history::filter_history_commands(prefix, Some(20));
-                if !matches.is_empty() {
-                    return Ok(Some(matches));
-                }
-            }
+    fn try_complete(
+        &self,
+        ctx: &CompletionContext,
+    ) -> Result<Option<Vec<String>>, CompletionError> {
+        // Use the full line as prefix to match history
+        let prefix = ctx.line.trim();
+        if prefix.is_empty() {
+            return Ok(None);
         }
+
+        let matches = crate::bash::history::get_history_commands_by_substring(prefix, Some(20));
+
+        if !matches.is_empty() {
+            return Ok(Some(matches));
+        }
+
         Ok(None)
     }
 }
@@ -368,22 +406,46 @@ impl CompletionEngine {
     /// Returns the first non-empty result
     pub fn complete(&self, ctx: &CompletionContext) -> Result<CompletionResult, CompletionError> {
         for provider in &self.providers {
-            if let Some(candidates) = provider.try_complete(ctx)? {
-                if !candidates.is_empty() {
-                    let spec = resolve_compspec(&ctx.command)?;
-                    return Ok(CompletionResult {
-                        candidates,
-                        used_provider: provider.name(),
-                        spec,
-                    });
-                }
+            if let Some(candidates) = provider.try_complete(ctx)?
+                && !candidates.is_empty()
+            {
+                let spec = resolve_compspec(&ctx.command)?;
+                return Ok(CompletionResult {
+                    candidates,
+                    used_provider: provider.name().to_string(),
+                    spec,
+                });
             }
         }
         Ok(CompletionResult {
             candidates: vec![],
-            used_provider: "none",
+            used_provider: "none".to_string(),
             spec: CompletionSpec::default(),
         })
+    }
+
+    /// Generate completion candidates using a pipeline
+    /// Results are merged from all providers with deduplication
+    pub fn complete_pipeline(
+        &self,
+        ctx: &CompletionContext,
+        pipeline: &PipelineProvider,
+    ) -> Result<CompletionResult, CompletionError> {
+        let candidates = pipeline.try_complete(ctx)?;
+
+        if let Some(merged) = candidates
+            && !merged.is_empty()
+        {
+            let spec = resolve_compspec(&ctx.command)?;
+            return Ok(CompletionResult {
+                candidates: merged,
+                used_provider: pipeline.name().to_string(),
+                spec,
+            });
+        }
+
+        // Fall back to first non-empty provider
+        self.complete(ctx)
     }
 }
 
@@ -393,25 +455,90 @@ impl Default for CompletionEngine {
     }
 }
 
+/// Combines multiple providers into a pipeline
+/// Results are merged with deduplication, earlier providers have higher priority
+pub struct PipelineProvider {
+    name: String,
+    providers: Vec<Box<dyn CompletionProvider>>,
+}
+
+impl PipelineProvider {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            providers: Vec::new(),
+        }
+    }
+
+    /// Add a provider to the pipeline
+    pub fn with<P: CompletionProvider + 'static>(mut self, provider: P) -> Self {
+        self.providers.push(Box::new(provider));
+        self
+    }
+
+    /// Add a boxed provider to the pipeline
+    pub fn with_boxed(mut self, provider: Box<dyn CompletionProvider>) -> Self {
+        self.providers.push(provider);
+        self
+    }
+}
+
+impl CompletionProvider for PipelineProvider {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn try_complete(
+        &self,
+        ctx: &CompletionContext,
+    ) -> Result<Option<Vec<String>>, CompletionError> {
+        let mut merged: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for provider in &self.providers {
+            if let Some(candidates) = provider.try_complete(ctx)? {
+                log::debug!(
+                    "[pipeline] {} returned {} candidates: {:?}",
+                    provider.name(),
+                    candidates.len(),
+                    candidates
+                );
+                for c in candidates {
+                    if seen.insert(c.clone()) {
+                        merged.push(c);
+                    }
+                }
+            }
+        }
+
+        log::debug!(
+            "[pipeline] merged result ({} total): {:?}",
+            merged.len(),
+            merged
+        );
+
+        if merged.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(merged))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::parser::ParsedLine;
 
     fn create_parsed(words: Vec<String>, current_word_index: usize) -> ParsedLine {
-        ParsedLine::new(
-            words.clone(),
-            words,
-            0,
-            current_word_index,
-        )
+        ParsedLine::new(words.clone(), words, 0, current_word_index)
     }
 
     #[test]
     fn test_completion_context_no_pipe() {
         let parsed = create_parsed(vec!["ls".to_string(), "-la".to_string()], 1);
         let ctx = CompletionContext::from_parsed(&parsed, "ls -la".to_string(), 3);
-        
+
         assert!(!ctx.is_after_pipe);
         assert_eq!(ctx.command, "ls");
         assert_eq!(ctx.previous_command, None);
@@ -421,11 +548,17 @@ mod tests {
     #[test]
     fn test_completion_context_after_pipe() {
         let parsed = create_parsed(
-            vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "grep".to_string(), "bar".to_string()],
-            4
+            vec![
+                "cat".to_string(),
+                "foo.txt".to_string(),
+                "|".to_string(),
+                "grep".to_string(),
+                "bar".to_string(),
+            ],
+            4,
         );
         let ctx = CompletionContext::from_parsed(&parsed, "cat foo.txt | grep bar".to_string(), 20);
-        
+
         assert!(ctx.is_after_pipe);
         assert_eq!(ctx.command, "grep");
         assert_eq!(ctx.previous_command, Some("foo.txt".to_string()));
@@ -435,11 +568,16 @@ mod tests {
     #[test]
     fn test_completion_context_at_pipe_command() {
         let parsed = create_parsed(
-            vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "gre".to_string()],
-            3
+            vec![
+                "cat".to_string(),
+                "foo.txt".to_string(),
+                "|".to_string(),
+                "gre".to_string(),
+            ],
+            3,
         );
         let ctx = CompletionContext::from_parsed(&parsed, "cat foo.txt | gre".to_string(), 19);
-        
+
         assert!(ctx.is_after_pipe);
         assert_eq!(ctx.command, "gre");
         assert_eq!(ctx.previous_command, Some("foo.txt".to_string()));
@@ -448,11 +586,16 @@ mod tests {
     #[test]
     fn test_completion_context_before_pipe() {
         let parsed = create_parsed(
-            vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "grep".to_string()],
-            1
+            vec![
+                "cat".to_string(),
+                "foo.txt".to_string(),
+                "|".to_string(),
+                "grep".to_string(),
+            ],
+            1,
         );
         let ctx = CompletionContext::from_parsed(&parsed, "cat foo.txt | grep".to_string(), 8);
-        
+
         assert!(!ctx.is_after_pipe);
         assert_eq!(ctx.command, "cat");
     }
@@ -460,11 +603,21 @@ mod tests {
     #[test]
     fn test_completion_context_multiple_pipes() {
         let parsed = create_parsed(
-            vec!["cat".to_string(), "a.txt".to_string(), "|".to_string(), "grep".to_string(), "x".to_string(), "|".to_string(), "wc".to_string(), "-l".to_string()],
-            7
+            vec![
+                "cat".to_string(),
+                "a.txt".to_string(),
+                "|".to_string(),
+                "grep".to_string(),
+                "x".to_string(),
+                "|".to_string(),
+                "wc".to_string(),
+                "-l".to_string(),
+            ],
+            7,
         );
-        let ctx = CompletionContext::from_parsed(&parsed, "cat a.txt | grep x | wc -l".to_string(), 25);
-        
+        let ctx =
+            CompletionContext::from_parsed(&parsed, "cat a.txt | grep x | wc -l".to_string(), 25);
+
         assert!(ctx.is_after_pipe);
         assert_eq!(ctx.command, "wc");
         assert_eq!(ctx.previous_command, Some("x".to_string()));

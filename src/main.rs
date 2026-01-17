@@ -10,7 +10,10 @@ use log::{debug, info};
 use std::env;
 use std::rc::Rc;
 
-use crate::completion::{CompletionContext, CompletionEngine, CompletionResult};
+use crate::completion::{
+    CarapaceProvider, CompletionContext, CompletionEngine, CompletionResult, HistoryProvider,
+    PipelineProvider,
+};
 use crate::config::Config;
 use crate::selector::{Selector, SelectorConfig};
 
@@ -74,7 +77,10 @@ fn main() -> Result<()> {
     );
 
     let engine = CompletionEngine::new();
-    let result = engine.complete(&ctx)?;
+    let pipeline = PipelineProvider::new("history+carapace")
+        .with(HistoryProvider::new())
+        .with(CarapaceProvider::new());
+    let result = engine.complete_pipeline(&ctx, &pipeline)?;
 
     info!(
         "Using {} provider, generated {} candidates",
@@ -101,6 +107,7 @@ fn main() -> Result<()> {
                 .clone()
                 .unwrap_or_else(|| DEFAULT_FZF_TMUX_HEIGHT.to_string()),
             header: Some(readline_line.clone()),
+            fuzzy: true,
         };
 
         info!("Opening selector with {} candidates", candidates.len());
@@ -166,7 +173,8 @@ fn insert_completion(
     let current_word_char_count = current_word.chars().count();
     let cursor_position_chars = line.chars().take(point).count();
 
-    let replacement_start_char_index = cursor_position_chars.saturating_sub(current_word_char_count);
+    let replacement_start_char_index =
+        cursor_position_chars.saturating_sub(current_word_char_count);
 
     let before: String = line.chars().take(replacement_start_char_index).collect();
     let after: String = line.chars().skip(cursor_position_chars).collect();
@@ -184,8 +192,14 @@ fn insert_completion(
             .map_err(|e| anyhow::anyhow!("Failed to convert line to UTF-8: {}", e))?;
         let final_point = new_point_byte + 1;
 
-        println!("{}", OUTPUT_READLINE_LINE_FORMAT.replace("{}", &new_line_with_space));
-        println!("{}", OUTPUT_READLINE_POINT_FORMAT.replace("{}", &final_point.to_string()));
+        println!(
+            "{}",
+            OUTPUT_READLINE_LINE_FORMAT.replace("{}", &new_line_with_space)
+        );
+        println!(
+            "{}",
+            OUTPUT_READLINE_POINT_FORMAT.replace("{}", &final_point.to_string())
+        );
     } else {
         let new_point_byte: usize = new_line.chars().take(new_point).map(|c| c.len_utf8()).sum();
         println!("{}", OUTPUT_READLINE_LINE_FORMAT.replace("{}", &new_line));

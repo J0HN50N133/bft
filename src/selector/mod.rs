@@ -24,6 +24,24 @@ pub struct SelectorConfig {
     pub prompt: String,
     pub height: String,
     pub header: Option<String>,
+    /// If true, use fuzzy matching. If false, preserve input order.
+    pub fuzzy: bool,
+}
+
+impl Default for SelectorConfig {
+    fn default() -> Self {
+        Self {
+            ctx: Rc::new(CompletionContext::from_parsed(
+                &crate::parser::ParsedLine::new(vec![], vec![], 0, 0),
+                String::new(),
+                0,
+            )),
+            prompt: "> ".to_string(),
+            height: "40%".to_string(),
+            header: None,
+            fuzzy: true,
+        }
+    }
 }
 
 pub trait Selector {
