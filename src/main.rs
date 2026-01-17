@@ -228,12 +228,18 @@ fn insert_completion(
             .map_err(|e| anyhow::anyhow!("Failed to convert line to UTF-8: {}", e))?;
         let final_point = new_point_byte + 1;
 
-        println!("READLINE_LINE='{}'", new_line_with_space);
-        println!("READLINE_POINT={}", final_point);
+        println!(
+            "{}",
+            OUTPUT_READLINE_LINE_FORMAT.replace("{}", &new_line_with_space)
+        );
+        println!("{} {}", OUTPUT_READLINE_POINT_FORMAT, final_point);
     } else {
         let new_point_byte: usize = new_line.chars().take(new_point).map(|c| c.len_utf8()).sum();
-        println!("READLINE_LINE='{}'", new_line);
-        println!("READLINE_POINT={}", new_point_byte);
+        println!(
+            "{}",
+            OUTPUT_READLINE_LINE_FORMAT.replace("{}", &new_line)
+        );
+        println!("{} {}", OUTPUT_READLINE_POINT_FORMAT, new_point_byte);
     }
 
     Ok(())
