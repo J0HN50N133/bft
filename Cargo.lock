@@ -130,6 +130,7 @@ dependencies = [
  "serde_json",
  "shellexpand",
  "shlex",
+ "tempfile",
  "thiserror",
 ]
 

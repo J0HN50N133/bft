@@ -1,3 +1,5 @@
+pub mod history;
+
 use crate::completion::{CompletionOptions, CompletionSpec};
 use std::process::Command;
 use thiserror::Error;

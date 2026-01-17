@@ -317,6 +317,36 @@ pub fn get_env_variables(prefix: &str) -> Vec<String> {
         .collect()
 }
 
+/// History-based completion provider
+pub struct HistoryProvider;
+
+impl HistoryProvider {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl CompletionProvider for HistoryProvider {
+    fn name(&self) -> &'static str {
+        "history"
+    }
+
+    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError> {
+        // Only complete from history when at command position (current_word_idx == 0)
+        // or when the current word could be a partial command
+        if ctx.current_word_idx == 0 || ctx.command.is_empty() {
+            let prefix = &ctx.current_word;
+            if !prefix.is_empty() {
+                let matches = crate::bash::history::filter_history_commands(prefix, Some(20));
+                if !matches.is_empty() {
+                    return Ok(Some(matches));
+                }
+            }
+        }
+        Ok(None)
+    }
+}
+
 /// Orchestrates completion providers in order of priority
 pub struct CompletionEngine {
     providers: Vec<Box<dyn CompletionProvider>>,
@@ -328,6 +358,7 @@ impl CompletionEngine {
             providers: vec![
                 Box::new(EnvVarProvider::new()) as Box<dyn CompletionProvider>,
                 Box::new(CarapaceProvider::new()) as Box<dyn CompletionProvider>,
+                Box::new(HistoryProvider::new()) as Box<dyn CompletionProvider>,
                 Box::new(BashProvider::new()) as Box<dyn CompletionProvider>,
             ],
         }
@@ -338,12 +369,14 @@ impl CompletionEngine {
     pub fn complete(&self, ctx: &CompletionContext) -> Result<CompletionResult, CompletionError> {
         for provider in &self.providers {
             if let Some(candidates) = provider.try_complete(ctx)? {
-                let spec = resolve_compspec(&ctx.command)?;
-                return Ok(CompletionResult {
-                    candidates,
-                    used_provider: provider.name(),
-                    spec,
-                });
+                if !candidates.is_empty() {
+                    let spec = resolve_compspec(&ctx.command)?;
+                    return Ok(CompletionResult {
+                        candidates,
+                        used_provider: provider.name(),
+                        spec,
+                    });
+                }
             }
         }
         Ok(CompletionResult {
