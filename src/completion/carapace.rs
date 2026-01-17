@@ -43,7 +43,13 @@ impl CarapaceProvider {
             return Ok(None);
         }
 
-        let output_str = String::from_utf8_lossy(&output.stdout);
+        let output_str = match String::from_utf8(output.stdout) {
+            Ok(s) => s,
+            Err(e) => {
+                debug!("Carapace output is not valid UTF-8: {}", e);
+                return Ok(None);
+            }
+        };
 
         let output: CarapaceOutput = match serde_json::from_str(&output_str) {
             Ok(o) => o,

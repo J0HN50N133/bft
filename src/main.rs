@@ -190,23 +190,104 @@ fn insert_completion(
     nospace: bool,
     current_word: &str,
 ) -> Result<()> {
-    let prefix_len = current_word.len();
+    let prefix_char_len = current_word.chars().count();
+    let point_char = line.chars().take(point).count();
 
-    let start_index = point.saturating_sub(prefix_len);
+    let start_char = point_char.saturating_sub(prefix_char_len);
 
-    let before = &line[..start_index];
-    let after = &line[point..];
+    let before: String = line.chars().take(start_char).collect();
+    let after: String = line.chars().skip(point_char).collect();
 
-    let mut new_line = format!("{}{}{}", before, completion, after);
-    let mut new_point = start_index + completion.len();
+    let new_line = format!("{}{}{}", before, completion, after);
+    let new_point = start_char + completion.chars().count();
 
     if !nospace && !completion.ends_with('/') {
-        new_line.insert(new_point, ' ');
-        new_point += 1;
+        let new_point_byte: usize = new_line.chars().take(new_point).map(|c| c.len_utf8()).sum();
+
+        let mut new_line_bytes: Vec<u8> = new_line.bytes().collect();
+        new_line_bytes.insert(new_point_byte, b' ');
+
+        let new_line_with_space = String::from_utf8(new_line_bytes).unwrap();
+        let final_point = new_point_byte + 1;
+
+        println!("READLINE_LINE='{}'", new_line_with_space);
+        println!("READLINE_POINT={}", final_point);
+    } else {
+        let new_point_byte: usize = new_line.chars().take(new_point).map(|c| c.len_utf8()).sum();
+        println!("READLINE_LINE='{}'", new_line);
+        println!("READLINE_POINT={}", new_point_byte);
     }
 
-    println!("READLINE_LINE='{}'", new_line);
-    println!("READLINE_POINT={}", new_point);
-
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_insert_completion_ascii() {
+        let line = "ls file";
+        let point = 7;
+        let completion = "file.txt";
+        let current_word = "file";
+
+        let result = insert_completion(line, point, completion, false, current_word);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_insert_completion_chinese() {
+        let line = "ls 中文";
+        let point = 9;
+        let completion = "test.txt";
+        let current_word = "中文";
+
+        let result = insert_completion(line, point, completion, false, current_word);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_insert_completion_mixed() {
+        let line = "git checkout feat";
+        let point = 14;
+        let completion = "feature-中文";
+        let current_word = "feat";
+
+        let result = insert_completion(line, point, completion, false, current_word);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_insert_completion_nospace() {
+        let line = "cd path";
+        let point = 6;
+        let completion = "/";
+        let current_word = "path";
+
+        let result = insert_completion(line, point, completion, true, current_word);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_insert_completion_empty_word() {
+        let line = "ls ";
+        let point = 3;
+        let completion = "file.txt";
+        let current_word = "";
+
+        let result = insert_completion(line, point, completion, false, current_word);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_insert_completion_trailing_utf8() {
+        let line = "ls 中文";
+        let point = 7;
+        let completion = "file.txt";
+        let current_word = "中";
+
+        let result = insert_completion(line, point, completion, false, current_word);
+        assert!(result.is_ok());
+    }
 }

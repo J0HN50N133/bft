@@ -39,6 +39,12 @@ impl ParsedLine {
     }
 }
 
+fn byte_to_char_index(s: &str, byte_idx: usize) -> usize {
+    s.char_indices()
+        .take_while(|(idx, _)| *idx < byte_idx)
+        .count()
+}
+
 pub fn parse_shell_line(input: &str, cursor_pos: usize) -> Result<ParsedLine, ParseError> {
     if input.trim().is_empty() {
         return Ok(ParsedLine::new(vec![], vec![], cursor_pos, 0));
@@ -50,8 +56,9 @@ pub fn parse_shell_line(input: &str, cursor_pos: usize) -> Result<ParsedLine, Pa
     let mut raw_words = Vec::new();
     let mut current_word_index = 0;
 
+    let cursor_char_pos = byte_to_char_index(input, cursor_pos);
     let mut found_cursor = false;
-    let mut last_end = 0;
+    let mut last_end_char = 0;
 
     for token in tokens.iter() {
         let (raw, loc) = match token {
@@ -59,64 +66,49 @@ pub fn parse_shell_line(input: &str, cursor_pos: usize) -> Result<ParsedLine, Pa
             Token::Word(s, l) => (s, l),
         };
 
-        if loc.start.index > last_end {
-            let gap = &input[last_end..loc.start.index];
-            if gap.chars().any(char::is_whitespace) {
-                // If there's a whitespace gap, we *might* insert an empty word if the cursor is here
-                // OR if the gap is "significant" enough to separate words even without cursor.
-                // In bash, "ls -la" -> words=["ls", "-la"].
-                // "ls  -la" -> words=["ls", "-la"] (extra space doesn't make extra word unless cursor is there?).
-                // Actually, COMP_WORDS generally splits by IFS. "ls  -la" -> "ls", "-la".
-                // But if cursor is in the middle of spaces, we need a word there to complete.
+        let start_char = byte_to_char_index(input, loc.start.index);
+        let end_char = byte_to_char_index(input, loc.end.index);
 
-                if !found_cursor && cursor_pos >= last_end && cursor_pos < loc.start.index {
-                    words.push(String::new());
-                    raw_words.push(String::new());
-                    current_word_index = words.len() - 1;
-                    found_cursor = true;
-                }
+        if start_char > last_end_char {
+            if !found_cursor && cursor_char_pos >= last_end_char && cursor_char_pos < start_char {
+                words.push(String::new());
+                raw_words.push(String::new());
+                current_word_index = words.len() - 1;
+                found_cursor = true;
             }
         }
 
         words.push(unquote_string(raw));
         raw_words.push(raw.clone());
 
-        if !found_cursor && cursor_pos >= loc.start.index && cursor_pos <= loc.end.index {
+        if !found_cursor && cursor_char_pos >= start_char && cursor_char_pos <= end_char {
             current_word_index = words.len() - 1;
             found_cursor = true;
         }
 
-        last_end = loc.end.index;
+        last_end_char = end_char;
     }
 
     if !found_cursor {
-        // Cursor after all tokens
-        let tail_start = last_end;
-        if tail_start < input.len() {
-            let tail = &input[tail_start..];
-            if tail.chars().any(char::is_whitespace) {
-                words.push(String::new());
-                raw_words.push(String::new());
-                current_word_index = words.len() - 1;
-            } else if cursor_pos > tail_start {
-                // Cursor is in tail (trailing whitespace or empty)
-                words.push(String::new());
-                raw_words.push(String::new());
-                current_word_index = words.len() - 1;
+        let input_char_len = input.chars().count();
+        if last_end_char < input_char_len {
+            let tail_chars: Vec<char> = input.chars().skip(last_end_char).collect();
+            if tail_chars.iter().any(|c| c.is_whitespace()) {
+                if cursor_char_pos > last_end_char {
+                    words.push(String::new());
+                    raw_words.push(String::new());
+                    current_word_index = words.len() - 1;
+                } else {
+                    current_word_index = words.len().saturating_sub(1);
+                }
             } else {
-                // Cursor exactly at end of last token?
-                // Should have been caught by loop (<= loc.end.index)
-                // But loop uses last_end which is exclusive end.
-                // If cursor_pos == last_end, it was matched in loop.
                 current_word_index = words.len().saturating_sub(1);
             }
-        } else if cursor_pos > tail_start {
-            // Cursor past end of string?
+        } else if cursor_char_pos > last_end_char {
             words.push(String::new());
             raw_words.push(String::new());
             current_word_index = words.len() - 1;
         } else {
-            // Exact match at end
             current_word_index = words.len().saturating_sub(1);
         }
     }
@@ -180,5 +172,21 @@ mod tests {
         let input = "echo \"a\"\"b\"";
         let parsed = parse_shell_line(input, 9).unwrap();
         assert_eq!(parsed.words, vec!["echo", "ab"]);
+    }
+
+    #[test]
+    fn test_parse_chinese() {
+        let input = "ls 中文";
+        let parsed = parse_shell_line(input, 9).unwrap();
+        assert_eq!(parsed.words, vec!["ls", "中文"]);
+        assert_eq!(parsed.current_word_index, 1);
+    }
+
+    #[test]
+    fn test_parse_mixed_utf8() {
+        let input = "git checkout feature-中文";
+        let parsed = parse_shell_line(input, 10).unwrap();
+        assert_eq!(parsed.words, vec!["git", "checkout", "feature-中文"]);
+        assert_eq!(parsed.current_word_index, 1);
     }
 }

@@ -1,81 +1,74 @@
-# Agent Guide for bft (Bash Fzf Tab)
+# PROJECT KNOWLEDGE BASE
 
-This guide provides instructions for AI agents operating in this repository.
+**Generated:** 2026-01-15
+**Framework:** Rust (2024 Edition), Nix
+**Type:** CLI Binary
 
-## Project Overview
-`bft` is a Rust-based tool that provides interactive tab completion for Bash, integrating with fuzzy finders like fzf.
+## OVERVIEW
+`bft` (Bash Fuzzy Tab) is a Rust-based CLI tool providing interactive fuzzy tab completion for Bash. It integrates with `carapace` for completion generation and uses a built-in TUI for selection, replacing the need for external tools like `fzf`.
 
-## Build and Test Commands
+## STRUCTURE
+```
+.
+├── src/
+│   ├── main.rs       # Entry point: CLI args, signal handling, orchestration
+│   ├── completion/   # Core logic: Context parsing, Carapace integration
+│   ├── selector/     # UI: Interactive fuzzy selection (dialoguer)
+│   ├── parser/       # Shell parsing: Tokenization, AST (brush-parser)
+│   ├── bash/         # Bash subprocess interaction
+│   ├── config/       # Env var configuration
+│   └── quoting/      # String escaping/unescaping utilities
+├── scripts/          # Shell binding scripts (bft.bash)
+├── flake.nix         # Nix build/dev environment
+└── .github/          # CI/CD workflows
+```
 
-### Build
-- **Build Release**: `cargo build --release`
-- **Check**: `cargo check`
-- **Lint**: `cargo clippy`
-- **Format**: `cargo fmt`
-- **Regenerate Lockfile**: `cargo generate-lockfile`
+## WHERE TO LOOK
 
-### Test
-- **Run All Tests**: `cargo test`
-- **Run Single Test**: `cargo test test_name_here`
-- **Run Tests with Output**: `cargo test -- --nocapture`
-- **Run Specific Test File**: `cargo test --test test_filename` (if integration test) or `cargo test module::path`
+| Task | Location | Notes |
+|------|----------|-------|
+| **CLI Entry** | `src/main.rs` | Arg parsing, orchestrator |
+| **Completion Logic** | `src/completion/` | Context extraction, Carapace calls |
+| **UI/TUI** | `src/selector/` | Rendering, key events, themes |
+| **Shell Parsing** | `src/parser/` | Handling quotes, cursors, subshells |
+| **Config** | `src/config/` | Environment variables |
 
-### Flake (Nix)
-- **Check Flake**: `nix flake check`
-- **Build Flake**: `nix build`
-- **Develop Shell**: `nix develop`
+## CONVENTIONS
 
-## Code Style Guidelines
+### Code Style
+- **Error Handling**: 
+  - Lib: `thiserror` (define enums).
+  - App: `anyhow::Result` (propagate).
+  - **NO `unwrap()` / `expect()`** in production code.
+- **Logging**:
+  - Use `log` crate (`info!`, `debug!`, `error!`).
+  - **NO `println!`** (breaks stdout protocol). Use `eprintln!` for critical fatals only.
+- **Testing**:
+  - Inline `#[cfg(test)] mod tests` in each module.
+  - Tests must cover parsing edge cases (quotes, unbalanced).
 
-### Formatting
-- Follow standard Rust formatting (rustfmt).
-- Use 4 spaces for indentation.
-- Max line length is generally 100 characters (default rustfmt).
+### Architecture
+- **Stateless**: The binary runs once per tab press. Fast startup is critical.
+- **Stdout Protocol**: 
+  - Stdout is RESERVED for the final completion string to be fed back to Bash.
+  - All debug/UI must go to Stderr / TTY.
 
-### Imports
-- Group imports by crate, standard library, and local modules.
-- Use `crate::` for internal module references when appropriate.
-- Avoid wildcard imports (`use foo::*`) unless necessary for preludes.
+## ANTI-PATTERNS (THIS PROJECT)
+- **Do NOT use `println!`**: It corrupts the completion result sent to Bash.
+- **Do NOT panic**: The shell session must survive. Handle all errors gracefully.
+- **Do NOT use `unwrap()`**: See above.
+- **Do NOT block**: Latency > 50ms is noticeable.
 
-### Naming Conventions
-- **Structs/Enums**: PascalCase (e.g., `CompletionContext`, `ParsedLine`)
-- **Functions/Variables**: snake_case (e.g., `resolve_compspec`, `current_word`)
-- **Constants**: SCREAMING_SNAKE_CASE
-- **Modules**: snake_case
+## COMMANDS
+```bash
+# Build
+cargo build --release
+nix build
 
-### Types and Error Handling
-- Use `thiserror` for library errors (as seen in `CompletionError`).
-- Use `anyhow::Result` for application-level error handling (in `main.rs`).
-- Define custom error enums for specific modules where needed.
-- Propagate errors using `?` operator.
-- Avoid `unwrap()` or `expect()` in production code unless safety is guaranteed or verified.
+# Test
+cargo test
+cargo test completion::tests -- --nocapture
 
-### Code Structure
-- Modular design:
-  - `completion`: Core completion logic and context.
-  - `parser`: Shell command parsing.
-  - `bash`: Interaction with Bash subprocesses.
-  - `config`: Configuration management.
-  - `quoting`: String quoting and escaping utilities.
-  - `selector`: User interface for selection (fzf, etc.).
-- Prefer `impl` blocks for struct methods.
-- Use `#[derive(...)]` for common traits like `Debug`, `Clone`, `Default`.
-
-### Logging
-- Use `log` crate macros (`info!`, `debug!`, `error!`).
-- Do not use `println!` for logging; it interferes with completion output (stdout).
-- Use `eprintln!` only for critical errors that must bypass the log system.
-
-## Version Control
-- Commit messages should be clear and descriptive.
-- Stage `flake.lock` and `Cargo.lock` if dependencies change.
-
-## Documentation
-- Update `README.md` if CLI arguments or major features change.
-- Keep `docs/` folder updated for debugging guides.
-
-## Agent Behavior
-- **Exploration**: Use `explore` agent or `grep`/`find` tools to locate relevant code before editing.
-- **Verification**: Always verify changes with `cargo check` or `cargo test`.
-- **Safety**: Do not introduce dependencies without checking `Cargo.toml`.
-- **Refactoring**: Ensure existing tests pass before and after refactoring.
+# Dev Shell
+nix develop
+```

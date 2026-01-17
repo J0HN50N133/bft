@@ -24,7 +24,8 @@ pub fn query_complete(command: &str) -> Result<Option<CompletionSpec>, BashError
         return Ok(None);
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|e| BashError::Other(format!("Failed to decode stdout as UTF-8: {}", e)))?;
     parse_compspec_output(&stdout)
 }
 
@@ -38,7 +39,8 @@ pub fn execute_compgen(args: &[String]) -> Result<Vec<String>, BashError> {
         return Ok(Vec::new());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|e| BashError::Other(format!("Failed to decode stdout as UTF-8: {}", e)))?;
     Ok(stdout.lines().map(|s| s.to_string()).collect())
 }
 
@@ -81,7 +83,8 @@ done
         return Ok(Vec::new());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|e| BashError::Other(format!("Failed to decode stdout as UTF-8: {}", e)))?;
     Ok(stdout.lines().map(|s| s.to_string()).collect())
 }
 

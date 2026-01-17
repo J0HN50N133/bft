@@ -52,6 +52,8 @@
             # Dependencies for build
             pkg-config
             carapace
+            # Development version of bft for testing tab completion
+            self.packages.${system}.default
           ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.libiconv
             pkgs.darwin.apple_sdk.frameworks.Security
@@ -59,6 +61,12 @@
 
           # Environment variables for development
           RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+
+          # Initialize bft tab completion for development
+          shellHook = ''
+            source <(bft --init-script)
+            echo "bft tab completion enabled for development"
+          '';
         };
       }
     );
