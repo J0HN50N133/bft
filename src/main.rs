@@ -10,7 +10,7 @@ use log::{debug, info};
 use std::env;
 use std::rc::Rc;
 
-use crate::completion::CompletionContext;
+use crate::completion::{CompletionContext, CompletionEngine, CompletionResult};
 use crate::config::Config;
 use crate::selector::{Selector, SelectorConfig};
 
@@ -19,8 +19,6 @@ const ENV_READLINE_LINE: &str = "READLINE_LINE";
 const ENV_READLINE_POINT: &str = "READLINE_POINT";
 const DEFAULT_POINT_VALUE: &str = "0";
 const DEFAULT_USIZE: usize = 0;
-const COMPGEN_ARG_COMMAND: &str = "-c";
-const COMPGEN_ARG_SEPARATOR: &str = "--";
 const OUTPUT_READLINE_LINE_FORMAT: &str = "READLINE_LINE='{}'";
 const OUTPUT_READLINE_POINT_FORMAT: &str = "READLINE_POINT={}";
 const DEFAULT_FZF_TMUX_HEIGHT: &str = "40%";
@@ -69,106 +67,24 @@ fn main() -> Result<()> {
         readline_line.clone(),
         readline_point,
     ));
+
     debug!(
         "Command: '{}', current_word: '{}', current_word_idx: {}, is_after_pipe: {}",
         ctx.command, ctx.current_word, ctx.current_word_idx, ctx.is_after_pipe
     );
 
-    let mut candidates = Vec::new();
-    let mut completion_spec = completion::CompletionSpec::default();
-    let mut used_carapace = false;
+    let engine = CompletionEngine::new();
+    let result = engine.complete(&ctx)?;
 
-    // Determine the arguments to pass to carapace
-    // If we're after a pipe, only pass the command after the pipe and its args
-    // Otherwise, pass all words
-    let carapace_args = if ctx.is_after_pipe {
-        std::iter::once(ctx.command.clone())
-            .chain(ctx.pipe_command_args.clone())
-            .collect()
-    } else {
-        ctx.words.clone()
-    };
+    info!(
+        "Using {} provider, generated {} candidates",
+        result.used_provider,
+        result.candidates.len()
+    );
 
-    debug!("carapace_args: {:?}", carapace_args);
+    let candidates = apply_post_processing(&result, &ctx.current_word, &config)?;
 
-    // Environment variable completion
-    if ctx.current_word.starts_with('$') {
-        info!("Environment variable completion for '{}'", ctx.current_word);
-        let var_prefix = ctx.current_word[1..].to_string();
-        candidates = completion::get_env_variables(&var_prefix);
-        info!("Generated {} env variable candidates", candidates.len());
-    }
-    // Try Carapace first
-    else if let Ok(Some(items)) =
-        completion::carapace::CarapaceProvider::fetch_suggestions(&ctx.command, &carapace_args)
-    {
-        if !items.is_empty() {
-            info!(
-                "Using Carapace provider for '{}' ({} items)",
-                ctx.command,
-                items.len()
-            );
-            candidates = items.into_iter().map(|i| i.value).collect();
-            used_carapace = true;
-        } else {
-            debug!(
-                "Carapace returned 0 items for '{}', falling back to Bash",
-                ctx.command
-            );
-        }
-    } else {
-        debug!(
-            "Carapace provider failed or not available for '{}'",
-            ctx.command
-        );
-    }
-
-    // Fallback to Bash
-    if !used_carapace && !ctx.current_word.starts_with('$') {
-        info!("Using Bash completion for command '{}'", ctx.command);
-        completion_spec = completion::resolve_compspec(&ctx.command)?;
-        debug!("Completion spec: {:?}", completion_spec);
-
-        // Check if we're completing a command name after a pipe
-        let is_completing_pipe_command = ctx.is_after_pipe 
-            && ctx.current_word_idx > 0
-            && parser::find_last_pipe_index(&ctx.words).map_or(false, |pipe_idx| {
-                ctx.current_word_idx == pipe_idx + 1
-            });
-
-        if is_completing_pipe_command
-            || (ctx.current_word_idx == 0
-                && completion_spec.function.is_none()
-                && completion_spec.wordlist.is_none()
-                && completion_spec.command.is_none()
-                && completion_spec.glob_pattern.is_none())
-        {
-            info!(
-                "Using command completion for command name '{}'",
-                ctx.current_word
-            );
-            candidates = bash::execute_compgen(&[
-                COMPGEN_ARG_COMMAND.to_string(),
-                COMPGEN_ARG_SEPARATOR.to_string(),
-                ctx.current_word.clone(),
-            ])?;
-        } else {
-            candidates = completion::execute_completion(&completion_spec, &ctx)?;
-        }
-
-        info!("Generated {} completion candidates", candidates.len());
-
-        candidates = quoting::apply_filter(&completion_spec.filter, &candidates, &ctx.current_word)?;
-
-        if completion_spec.options.filenames
-            || completion_spec.options.default
-            || completion_spec.options.bashdefault && completion_spec.options.dirnames
-        {
-            candidates = quoting::mark_directories(candidates);
-        }
-    }
-
-    let (candidates, no_space_after_completion, _prefix) = quoting::find_common_prefix(
+    let (candidates, no_space_after_completion, _prefix) = crate::quoting::find_common_prefix(
         &candidates,
         ctx.current_word.len(),
         config.auto_common_prefix_part,
@@ -199,11 +115,11 @@ fn main() -> Result<()> {
     if let Some(mut completion) = selected {
         debug!("Selected completion: '{}'", completion);
 
-        if completion_spec.options.filenames
-            || completion_spec.options.default
-            || completion_spec.options.bashdefault
+        if result.spec.options.filenames
+            || result.spec.options.default
+            || result.spec.options.bashdefault
         {
-            completion = quoting::quote_filename(&completion, true);
+            completion = crate::quoting::quote_filename(&completion, true);
         }
 
         insert_completion(
@@ -219,6 +135,25 @@ fn main() -> Result<()> {
 
     info!("Completion finished");
     Ok(())
+}
+
+fn apply_post_processing(
+    result: &CompletionResult,
+    current_word: &str,
+    _config: &Config,
+) -> Result<Vec<String>, crate::completion::CompletionError> {
+    let mut candidates = result.candidates.clone();
+
+    candidates = crate::quoting::apply_filter(&result.spec.filter, &candidates, current_word)?;
+
+    if result.spec.options.filenames
+        || result.spec.options.default
+        || result.spec.options.bashdefault && result.spec.options.dirnames
+    {
+        candidates = crate::quoting::mark_directories(candidates);
+    }
+
+    Ok(candidates)
 }
 
 fn insert_completion(

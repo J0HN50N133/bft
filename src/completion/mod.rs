@@ -18,6 +18,18 @@ pub enum CompletionError {
     Other(String),
 }
 
+impl From<anyhow::Error> for CompletionError {
+    fn from(e: anyhow::Error) -> Self {
+        CompletionError::Other(e.to_string())
+    }
+}
+
+impl From<glob::PatternError> for CompletionError {
+    fn from(e: glob::PatternError) -> Self {
+        CompletionError::Other(e.to_string())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CompletionContext {
     pub words: Vec<String>,
@@ -49,15 +61,11 @@ impl CompletionContext {
             None
         };
 
-        // Check if we're completing after a pipe
         let pipe_idx = parser::find_last_pipe_index(&parsed.words);
         let (is_after_pipe, previous_command, pipe_command_args) = if let Some(pipe_idx) = pipe_idx {
             let cmd_idx = pipe_idx + 1;
             if parsed.current_word_index > pipe_idx {
-                // We're after the pipe
-                // previous_command is the word immediately before the pipe (could be the previous command or its last arg)
                 let prev_cmd = parsed.words.get(pipe_idx.saturating_sub(1)).cloned();
-                // pipe_command_args should exclude the command after the pipe
                 let args = if cmd_idx + 1 < parsed.words.len() {
                     parsed.words[cmd_idx + 1..].to_vec()
                 } else {
@@ -71,8 +79,6 @@ impl CompletionContext {
             (false, None, vec![])
         };
 
-        // Determine the effective command for completion
-        // If we're after a pipe, use the command after the pipe
         let effective_command = if is_after_pipe {
             if let Some(cmd) = parsed.words.get(pipe_idx.unwrap() + 1) {
                 cmd.clone()
@@ -95,6 +101,15 @@ impl CompletionContext {
             previous_command,
             pipe_command_args,
         }
+    }
+
+    /// Returns true if we're completing a command name after a pipe
+    pub fn is_completing_pipe_command(&self) -> bool {
+        self.is_after_pipe
+            && self.current_word_idx > 0
+            && parser::find_last_pipe_index(&self.words).map_or(false, |pipe_idx| {
+                self.current_word_idx == pipe_idx + 1
+            })
     }
 }
 
@@ -120,6 +135,94 @@ pub struct CompletionSpec {
     pub prefix: String,
     pub suffix: String,
     pub options: CompletionOptions,
+}
+
+/// Trait for completion providers
+pub trait CompletionProvider: Send {
+    fn name(&self) -> &'static str;
+    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError>;
+}
+
+/// Result of a completion attempt
+#[derive(Debug, Clone)]
+pub struct CompletionResult {
+    pub candidates: Vec<String>,
+    pub used_provider: &'static str,
+    pub spec: CompletionSpec,
+}
+
+impl CompletionResult {
+    pub fn is_empty(&self) -> bool {
+        self.candidates.is_empty()
+    }
+}
+
+/// Carapace-based completion provider
+pub struct CarapaceProvider;
+
+impl CarapaceProvider {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl CompletionProvider for CarapaceProvider {
+    fn name(&self) -> &'static str {
+        "carapace"
+    }
+
+    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError> {
+        let args = if ctx.is_after_pipe {
+            std::iter::once(ctx.command.clone())
+                .chain(ctx.pipe_command_args.clone())
+                .collect()
+        } else {
+            ctx.words.clone()
+        };
+
+        let items = carapace::CarapaceProvider::fetch_suggestions(&ctx.command, &args)?;
+
+        Ok(items.map(|items| items.into_iter().map(|i| i.value).collect()))
+    }
+}
+
+/// Bash-based completion provider
+pub struct BashProvider;
+
+impl BashProvider {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl CompletionProvider for BashProvider {
+    fn name(&self) -> &'static str {
+        "bash"
+    }
+
+    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError> {
+        let spec = resolve_compspec(&ctx.command)?;
+
+        if ctx.is_completing_pipe_command() || is_command_name_completion(&spec, ctx) {
+            let candidates = bash::execute_compgen(&[
+                "-c".to_string(),
+                "--".to_string(),
+                ctx.current_word.clone(),
+            ])?;
+            Ok(Some(candidates))
+        } else {
+            let candidates = execute_completion(&spec, ctx)?;
+            Ok(Some(candidates))
+        }
+    }
+}
+
+fn is_command_name_completion(spec: &CompletionSpec, ctx: &CompletionContext) -> bool {
+    ctx.current_word_idx == 0
+        && spec.function.is_none()
+        && spec.wordlist.is_none()
+        && spec.command.is_none()
+        && spec.glob_pattern.is_none()
 }
 
 pub fn resolve_compspec(command: &str) -> Result<CompletionSpec, CompletionError> {
@@ -182,12 +285,79 @@ pub fn execute_completion(
     Ok(candidates)
 }
 
+/// Environment variable completion provider
+pub struct EnvVarProvider;
+
+impl EnvVarProvider {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl CompletionProvider for EnvVarProvider {
+    fn name(&self) -> &'static str {
+        "envvar"
+    }
+
+    fn try_complete(&self, ctx: &CompletionContext) -> Result<Option<Vec<String>>, CompletionError> {
+        if ctx.current_word.starts_with('$') {
+            let var_prefix = ctx.current_word[1..].to_string();
+            Ok(Some(get_env_variables(&var_prefix)))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 pub fn get_env_variables(prefix: &str) -> Vec<String> {
     let prefix_lower = prefix.to_lowercase();
     std::env::vars()
         .filter(|(k, _)| k.to_lowercase().starts_with(&prefix_lower))
         .map(|(k, _)| format!("${}", k))
         .collect()
+}
+
+/// Orchestrates completion providers in order of priority
+pub struct CompletionEngine {
+    providers: Vec<Box<dyn CompletionProvider>>,
+}
+
+impl CompletionEngine {
+    pub fn new() -> Self {
+        Self {
+            providers: vec![
+                Box::new(EnvVarProvider::new()) as Box<dyn CompletionProvider>,
+                Box::new(CarapaceProvider::new()) as Box<dyn CompletionProvider>,
+                Box::new(BashProvider::new()) as Box<dyn CompletionProvider>,
+            ],
+        }
+    }
+
+    /// Generate completion candidates using all providers
+    /// Returns the first non-empty result
+    pub fn complete(&self, ctx: &CompletionContext) -> Result<CompletionResult, CompletionError> {
+        for provider in &self.providers {
+            if let Some(candidates) = provider.try_complete(ctx)? {
+                let spec = resolve_compspec(&ctx.command)?;
+                return Ok(CompletionResult {
+                    candidates,
+                    used_provider: provider.name(),
+                    spec,
+                });
+            }
+        }
+        Ok(CompletionResult {
+            candidates: vec![],
+            used_provider: "none",
+            spec: CompletionSpec::default(),
+        })
+    }
+}
+
+impl Default for CompletionEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
