@@ -125,6 +125,27 @@ pub fn unquote_string(s: &str) -> String {
     brush_parser::unquote_str(s).to_string()
 }
 
+/// Find the last pipe (|) operator index in the words list
+/// Returns None if no pipe is found
+pub fn find_last_pipe_index(words: &[String]) -> Option<usize> {
+    words.iter().rposition(|w| w == "|")
+}
+
+/// Get the command after the last pipe operator
+/// Returns (command_name, args_after_pipe) if found
+pub fn get_command_after_pipe(words: &[String]) -> Option<(String, Vec<String>)> {
+    let pipe_idx = find_last_pipe_index(words)?;
+    let cmd_idx = pipe_idx + 1;
+    
+    if cmd_idx >= words.len() {
+        return None;
+    }
+    
+    let command = words[cmd_idx].clone();
+    let args = words[cmd_idx + 1..].to_vec();
+    Some((command, args))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +209,27 @@ mod tests {
         let parsed = parse_shell_line(input, 10).unwrap();
         assert_eq!(parsed.words, vec!["git", "checkout", "feature-中文"]);
         assert_eq!(parsed.current_word_index, 1);
+    }
+
+    #[test]
+    fn test_find_last_pipe_index() {
+        let words = vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "grep".to_string()];
+        assert_eq!(find_last_pipe_index(&words), Some(2));
+        
+        let words_no_pipe = vec!["ls".to_string(), "-la".to_string()];
+        assert_eq!(find_last_pipe_index(&words_no_pipe), None);
+    }
+
+    #[test]
+    fn test_get_command_after_pipe() {
+        let words = vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "grep".to_string(), "bar".to_string()];
+        let result = get_command_after_pipe(&words);
+        assert_eq!(result, Some(("grep".to_string(), vec!["bar".to_string()])));
+        
+        let words_no_pipe = vec!["ls".to_string(), "-la".to_string()];
+        assert_eq!(get_command_after_pipe(&words_no_pipe), None);
+        
+        let words_empty_after_pipe = vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string()];
+        assert_eq!(get_command_after_pipe(&words_empty_after_pipe), None);
     }
 }

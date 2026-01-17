@@ -1,5 +1,5 @@
 use crate::bash;
-use crate::parser::ParsedLine;
+use crate::parser::{self, ParsedLine};
 use thiserror::Error;
 
 pub mod carapace;
@@ -27,6 +27,12 @@ pub struct CompletionContext {
     pub command: String,
     pub current_word: String,
     pub previous_word: Option<String>,
+    /// If true, completion is for a command after pipe
+    pub is_after_pipe: bool,
+    /// The command before the pipe (for context)
+    pub previous_command: Option<String>,
+    /// Arguments for the command after the pipe
+    pub pipe_command_args: Vec<String>,
 }
 
 impl CompletionContext {
@@ -43,14 +49,51 @@ impl CompletionContext {
             None
         };
 
+        // Check if we're completing after a pipe
+        let pipe_idx = parser::find_last_pipe_index(&parsed.words);
+        let (is_after_pipe, previous_command, pipe_command_args) = if let Some(pipe_idx) = pipe_idx {
+            let cmd_idx = pipe_idx + 1;
+            if parsed.current_word_index > pipe_idx {
+                // We're after the pipe
+                // previous_command is the word immediately before the pipe (could be the previous command or its last arg)
+                let prev_cmd = parsed.words.get(pipe_idx.saturating_sub(1)).cloned();
+                // pipe_command_args should exclude the command after the pipe
+                let args = if cmd_idx + 1 < parsed.words.len() {
+                    parsed.words[cmd_idx + 1..].to_vec()
+                } else {
+                    vec![]
+                };
+                (true, prev_cmd, args)
+            } else {
+                (false, None, vec![])
+            }
+        } else {
+            (false, None, vec![])
+        };
+
+        // Determine the effective command for completion
+        // If we're after a pipe, use the command after the pipe
+        let effective_command = if is_after_pipe {
+            if let Some(cmd) = parsed.words.get(pipe_idx.unwrap() + 1) {
+                cmd.clone()
+            } else {
+                command
+            }
+        } else {
+            command
+        };
+
         Self {
             words: parsed.words.clone(),
             current_word_idx: parsed.current_word_index,
             line,
             point,
-            command,
+            command: effective_command,
             current_word,
             previous_word,
+            is_after_pipe,
+            previous_command,
+            pipe_command_args,
         }
     }
 }
@@ -145,4 +188,83 @@ pub fn get_env_variables(prefix: &str) -> Vec<String> {
         .filter(|(k, _)| k.to_lowercase().starts_with(&prefix_lower))
         .map(|(k, _)| format!("${}", k))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::ParsedLine;
+
+    fn create_parsed(words: Vec<String>, current_word_index: usize) -> ParsedLine {
+        ParsedLine::new(
+            words.clone(),
+            words,
+            0,
+            current_word_index,
+        )
+    }
+
+    #[test]
+    fn test_completion_context_no_pipe() {
+        let parsed = create_parsed(vec!["ls".to_string(), "-la".to_string()], 1);
+        let ctx = CompletionContext::from_parsed(&parsed, "ls -la".to_string(), 3);
+        
+        assert!(!ctx.is_after_pipe);
+        assert_eq!(ctx.command, "ls");
+        assert_eq!(ctx.previous_command, None);
+        assert!(ctx.pipe_command_args.is_empty());
+    }
+
+    #[test]
+    fn test_completion_context_after_pipe() {
+        let parsed = create_parsed(
+            vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "grep".to_string(), "bar".to_string()],
+            4
+        );
+        let ctx = CompletionContext::from_parsed(&parsed, "cat foo.txt | grep bar".to_string(), 20);
+        
+        assert!(ctx.is_after_pipe);
+        assert_eq!(ctx.command, "grep");
+        assert_eq!(ctx.previous_command, Some("foo.txt".to_string()));
+        assert_eq!(ctx.pipe_command_args, vec!["bar".to_string()]);
+    }
+
+    #[test]
+    fn test_completion_context_at_pipe_command() {
+        let parsed = create_parsed(
+            vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "gre".to_string()],
+            3
+        );
+        let ctx = CompletionContext::from_parsed(&parsed, "cat foo.txt | gre".to_string(), 19);
+        
+        assert!(ctx.is_after_pipe);
+        assert_eq!(ctx.command, "gre");
+        assert_eq!(ctx.previous_command, Some("foo.txt".to_string()));
+    }
+
+    #[test]
+    fn test_completion_context_before_pipe() {
+        let parsed = create_parsed(
+            vec!["cat".to_string(), "foo.txt".to_string(), "|".to_string(), "grep".to_string()],
+            1
+        );
+        let ctx = CompletionContext::from_parsed(&parsed, "cat foo.txt | grep".to_string(), 8);
+        
+        assert!(!ctx.is_after_pipe);
+        assert_eq!(ctx.command, "cat");
+    }
+
+    #[test]
+    fn test_completion_context_multiple_pipes() {
+        let parsed = create_parsed(
+            vec!["cat".to_string(), "a.txt".to_string(), "|".to_string(), "grep".to_string(), "x".to_string(), "|".to_string(), "wc".to_string(), "-l".to_string()],
+            7
+        );
+        let ctx = CompletionContext::from_parsed(&parsed, "cat a.txt | grep x | wc -l".to_string(), 25);
+        
+        assert!(ctx.is_after_pipe);
+        assert_eq!(ctx.command, "wc");
+        assert_eq!(ctx.previous_command, Some("x".to_string()));
+        assert_eq!(ctx.pipe_command_args, vec!["-l".to_string()]);
+    }
 }

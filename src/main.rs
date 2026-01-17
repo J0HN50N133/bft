@@ -70,13 +70,26 @@ fn main() -> Result<()> {
         readline_point,
     ));
     debug!(
-        "Command: '{}', current_word: '{}', current_word_idx: {}",
-        ctx.command, ctx.current_word, ctx.current_word_idx
+        "Command: '{}', current_word: '{}', current_word_idx: {}, is_after_pipe: {}",
+        ctx.command, ctx.current_word, ctx.current_word_idx, ctx.is_after_pipe
     );
 
     let mut candidates = Vec::new();
     let mut completion_spec = completion::CompletionSpec::default();
     let mut used_carapace = false;
+
+    // Determine the arguments to pass to carapace
+    // If we're after a pipe, only pass the command after the pipe and its args
+    // Otherwise, pass all words
+    let carapace_args = if ctx.is_after_pipe {
+        std::iter::once(ctx.command.clone())
+            .chain(ctx.pipe_command_args.clone())
+            .collect()
+    } else {
+        ctx.words.clone()
+    };
+
+    debug!("carapace_args: {:?}", carapace_args);
 
     // Environment variable completion
     if ctx.current_word.starts_with('$') {
@@ -87,7 +100,7 @@ fn main() -> Result<()> {
     }
     // Try Carapace first
     else if let Ok(Some(items)) =
-        completion::carapace::CarapaceProvider::fetch_suggestions(&ctx.command, &ctx.words)
+        completion::carapace::CarapaceProvider::fetch_suggestions(&ctx.command, &carapace_args)
     {
         if !items.is_empty() {
             info!(
@@ -116,11 +129,19 @@ fn main() -> Result<()> {
         completion_spec = completion::resolve_compspec(&ctx.command)?;
         debug!("Completion spec: {:?}", completion_spec);
 
-        if ctx.current_word_idx == 0
-            && completion_spec.function.is_none()
-            && completion_spec.wordlist.is_none()
-            && completion_spec.command.is_none()
-            && completion_spec.glob_pattern.is_none()
+        // Check if we're completing a command name after a pipe
+        let is_completing_pipe_command = ctx.is_after_pipe 
+            && ctx.current_word_idx > 0
+            && parser::find_last_pipe_index(&ctx.words).map_or(false, |pipe_idx| {
+                ctx.current_word_idx == pipe_idx + 1
+            });
+
+        if is_completing_pipe_command
+            || (ctx.current_word_idx == 0
+                && completion_spec.function.is_none()
+                && completion_spec.wordlist.is_none()
+                && completion_spec.command.is_none()
+                && completion_spec.glob_pattern.is_none())
         {
             info!(
                 "Using command completion for command name '{}'",
