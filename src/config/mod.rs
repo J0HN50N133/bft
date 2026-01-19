@@ -3,9 +3,10 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SelectorType {
+    #[default]
     Dialoguer,
 }
 
@@ -19,6 +20,7 @@ pub enum ProviderConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub selector_height: Option<String>,
     pub auto_common_prefix: bool,
@@ -28,7 +30,6 @@ pub struct Config {
     pub completion_sep: String,
     pub no_empty_cmd_completion: bool,
     pub selector_type: SelectorType,
-    #[serde(default)]
     pub providers: Vec<ProviderConfig>,
 }
 
@@ -117,6 +118,39 @@ impl Config {
             no_empty_cmd_completion,
             selector_type,
             ..Default::default()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_empty_config() {
+        let json = "{}";
+        let config: Config = json5::from_str(json).unwrap();
+        assert_eq!(config.prompt, "> ");
+        assert_eq!(config.providers.len(), 4);
+    }
+
+    #[test]
+    fn test_deserialize_partial_config() {
+        let json = "{ prompt: '$ ' }";
+        let config: Config = json5::from_str(json).unwrap();
+        assert_eq!(config.prompt, "$ ");
+        assert!(config.auto_common_prefix); // default
+        assert_eq!(config.providers.len(), 4); // default
+    }
+
+    #[test]
+    fn test_deserialize_providers_override() {
+        let json = "{ providers: [{ type: 'bash' }] }";
+        let config: Config = json5::from_str(json).unwrap();
+        assert_eq!(config.providers.len(), 1);
+        match config.providers[0] {
+            ProviderConfig::Bash => {}
+            _ => panic!("Expected Bash provider"),
         }
     }
 }
