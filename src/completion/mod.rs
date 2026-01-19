@@ -239,7 +239,12 @@ impl CompletionProvider for CarapaceProvider {
                 .chain(ctx.pipe_command_args.clone())
                 .collect()
         } else {
-            ctx.words.clone()
+            // Truncate args to the current cursor position to handle mid-line completion
+            if ctx.current_word_idx < ctx.words.len() {
+                ctx.words[0..=ctx.current_word_idx].to_vec()
+            } else {
+                ctx.words.clone()
+            }
         };
 
         let items = carapace::CarapaceProvider::fetch_suggestions(&ctx.command, &args)?;
@@ -343,6 +348,8 @@ pub fn execute_completion(
             word,
             ctx.previous_word.as_deref(),
             &ctx.words,
+            &ctx.line,
+            ctx.point,
         )?);
     }
 

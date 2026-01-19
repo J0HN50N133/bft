@@ -48,18 +48,24 @@ pub fn execute_compgen(args: &[String]) -> Result<Vec<String>, BashError> {
 
 pub fn execute_completion_function(
     function: &str,
-    command: &str,
-    word: &str,
+    _command: &str,
+    _word: &str,
     _previous_word: Option<&str>,
     words: &[String],
+    line: &str,
+    point: usize,
 ) -> Result<Vec<String>, BashError> {
-    let words_str = words.join(" ");
+    let words_str = words
+        .iter()
+        .map(|w| shlex::try_quote(w).unwrap_or_else(|_| std::borrow::Cow::Owned(w.to_string())))
+        .collect::<Vec<_>>()
+        .join(" ");
 
     let script = format!(
         r#"
-export COMP_WORDS="{}"
+COMP_WORDS=({})
 export COMP_CWORD={}
-export COMP_LINE="{} {}"
+export COMP_LINE='{}'
 export COMP_POINT={}
 export COMP_KEY=""
 export COMP_TYPE="9"
@@ -73,9 +79,8 @@ done
 "#,
         words_str,
         words.len().saturating_sub(1),
-        command,
-        word,
-        command.len() + word.len() + 1,
+        line.replace("'", "'\\''"), // Escape single quotes for the bash string
+        point,
         function
     );
 
