@@ -375,7 +375,7 @@ impl CompletionProvider for HistoryProvider {
             return Ok(None);
         }
 
-        let matches = crate::bash::history::get_history_commands_by_substring(prefix, Some(20));
+        let matches = crate::bash::history::get_history_commands_by_prefix(prefix, Some(20));
 
         if !matches.is_empty() {
             return Ok(Some(matches));
@@ -387,40 +387,24 @@ impl CompletionProvider for HistoryProvider {
 
 /// Orchestrates completion providers in order of priority
 pub struct CompletionEngine {
-    providers: Vec<Box<dyn CompletionProvider>>,
+    provider: Box<dyn CompletionProvider>,
 }
 
 impl CompletionEngine {
-    pub fn new() -> Self {
-        Self {
-            providers: vec![
-                Box::new(EnvVarProvider::new()) as Box<dyn CompletionProvider>,
-                Box::new(CarapaceProvider::new()) as Box<dyn CompletionProvider>,
-                Box::new(HistoryProvider::new()) as Box<dyn CompletionProvider>,
-                Box::new(BashProvider::new()) as Box<dyn CompletionProvider>,
-            ],
-        }
+    pub fn new(provider: Box<dyn CompletionProvider>) -> Self {
+        Self { provider }
     }
 
     /// Generate completion candidates using all providers
     /// Returns the first non-empty result
     pub fn complete(&self, ctx: &CompletionContext) -> Result<CompletionResult, CompletionError> {
-        for provider in &self.providers {
-            if let Some(candidates) = provider.try_complete(ctx)?
-                && !candidates.is_empty()
-            {
-                let spec = resolve_compspec(&ctx.command)?;
-                return Ok(CompletionResult {
-                    candidates,
-                    used_provider: provider.name().to_string(),
-                    spec,
-                });
-            }
-        }
+        let candidates = self.provider.try_complete(ctx)?.unwrap_or_default();
+        let used_provider = self.provider.name().to_string();
+        let spec = resolve_compspec(&ctx.command)?;
         Ok(CompletionResult {
-            candidates: vec![],
-            used_provider: "none".to_string(),
-            spec: CompletionSpec::default(),
+            candidates,
+            used_provider,
+            spec,
         })
     }
 
@@ -446,12 +430,6 @@ impl CompletionEngine {
 
         // Fall back to first non-empty provider
         self.complete(ctx)
-    }
-}
-
-impl Default for CompletionEngine {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -622,5 +600,31 @@ mod tests {
         assert_eq!(ctx.command, "wc");
         assert_eq!(ctx.previous_command, Some("x".to_string()));
         assert_eq!(ctx.pipe_command_args, vec!["-l".to_string()]);
+    }
+
+    #[test]
+    fn test_history_provider() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut temp = NamedTempFile::new().unwrap();
+        writeln!(temp, "git status").unwrap();
+        writeln!(temp, "ls -la").unwrap();
+        unsafe { std::env::set_var("HISTFILE", temp.path()) };
+
+        let provider = HistoryProvider::new();
+
+        let parsed = ParsedLine::new(
+            vec!["git".to_string(), "sta".to_string()],
+            vec!["git".to_string(), "sta".to_string()],
+            7,
+            1,
+        );
+        let ctx = CompletionContext::from_parsed(&parsed, "git sta".to_string(), 7);
+
+        let result = provider.try_complete(&ctx).unwrap().unwrap();
+        assert!(result.contains(&"git status".to_string()));
+
+        unsafe { std::env::remove_var("HISTFILE") };
     }
 }

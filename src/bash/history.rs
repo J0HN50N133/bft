@@ -149,21 +149,22 @@ pub fn get_matching_history_commands(prefix: &str, limit: Option<usize>) -> Vec<
     filtered
 }
 
-/// Get full command lines from history that contain the substring
-pub fn get_history_commands_by_substring(substr: &str, limit: Option<usize>) -> Vec<String> {
+/// Get full command lines from history that contain the substring, take the last [limit] entries.
+/// If limit is none, all history entries will be returned
+pub fn get_history_commands_by_prefix(substr: &str, limit: Option<usize>) -> Vec<String> {
     if substr.is_empty() {
         return Vec::new();
     }
 
-    let history = read_history(limit);
+    let history = read_history(None);
     let history_len = history.len();
-    let substr_lower = substr.to_lowercase();
 
     let filtered: Vec<String> = history
         .into_iter()
-        .filter(|entry| entry.command.to_lowercase().contains(&substr_lower))
+        .filter(|entry| entry.command.to_lowercase().starts_with(substr))
         .map(|entry| entry.command)
-        .take(limit.unwrap_or(usize::MAX))
+        .rev()
+        .take(limit.unwrap_or(history_len))
         .collect();
 
     debug!(

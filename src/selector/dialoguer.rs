@@ -1,6 +1,5 @@
 use crate::selector::{Selector, SelectorConfig, SelectorError, theme};
 use dialoguer::console::Term;
-use fuzzy_matcher::FuzzyMatcher;
 use log::{debug, warn};
 
 #[derive(Default)]
@@ -45,28 +44,7 @@ impl Selector for DialoguerSelector {
 
         let theme = &theme::CustomColorfulTheme::new();
 
-        // Apply fuzzy filtering while preserving input order (history first, then carapace)
-        let filtered_candidates: Vec<String> = if config.fuzzy && !current_word.is_empty() {
-            let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
-            let mut scored: Vec<(i64, usize, String)> = candidates
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, cand)| {
-                    matcher
-                        .fuzzy_match(cand, current_word)
-                        .map(|score| (score, idx, cand.clone()))
-                })
-                .collect();
-
-            // Sort by score (descending), but preserve original order for same scores
-            scored.sort_by_key(|(score, idx, _)| (-score, *idx));
-
-            scored.into_iter().map(|(_, _, cand)| cand).collect()
-        } else {
-            candidates.to_vec()
-        };
-
-        if filtered_candidates.is_empty() {
+        if candidates.is_empty() {
             debug!("No candidates after fuzzy filtering");
             return Ok(None);
         }
@@ -74,14 +52,15 @@ impl Selector for DialoguerSelector {
         debug!(
             "Filtered from {} to {} candidates",
             candidates.len(),
-            filtered_candidates.len()
+            candidates.len()
         );
 
-        let select_result = dialoguer::Select::with_theme(theme)
+        let select_result = dialoguer::FuzzySelect::with_theme(theme)
             .report(false)
+            .with_initial_text(current_word)
             .with_prompt(prompt)
             .default(0)
-            .items(&filtered_candidates)
+            .items(candidates)
             .interact_opt();
 
         if select_result.is_err() {
@@ -90,7 +69,7 @@ impl Selector for DialoguerSelector {
 
         match select_result {
             Ok(Some(index)) => {
-                let selected: &String = &filtered_candidates[index];
+                let selected: &String = &candidates[index];
                 debug!("Selected candidate: {}", selected);
                 Ok(Some(selected.clone()))
             }

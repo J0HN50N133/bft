@@ -49,7 +49,10 @@ fn main() -> Result<()> {
             .unwrap_or(DEFAULT_USIZE)
     };
 
-    env_logger::init();
+    env_logger::builder()
+        .format_file(true)
+        .format_line_number(true)
+        .init();
 
     info!("Starting bft");
 
@@ -76,11 +79,11 @@ fn main() -> Result<()> {
         ctx.command, ctx.current_word, ctx.current_word_idx, ctx.is_after_pipe
     );
 
-    let engine = CompletionEngine::new();
     let pipeline = PipelineProvider::new("history+carapace")
         .with(HistoryProvider::new())
         .with(CarapaceProvider::new());
-    let result = engine.complete_pipeline(&ctx, &pipeline)?;
+    let engine = CompletionEngine::new(Box::new(pipeline));
+    let result = engine.complete(&ctx)?;
 
     info!(
         "Using {} provider, generated {} candidates",
@@ -122,9 +125,21 @@ fn main() -> Result<()> {
     if let Some(mut completion) = selected {
         debug!("Selected completion: '{}'", completion);
 
-        if result.spec.options.filenames
-            || result.spec.options.default
-            || result.spec.options.bashdefault
+        let current_word_char_count = ctx.current_word.chars().count();
+        let cursor_position_chars = readline_line.chars().take(readline_point).count();
+        let replacement_start_char_index =
+            cursor_position_chars.saturating_sub(current_word_char_count);
+        let before: String = readline_line
+            .chars()
+            .take(replacement_start_char_index)
+            .collect();
+
+        let is_full_line = !before.is_empty() && completion.starts_with(&before);
+
+        if !is_full_line
+            && (result.spec.options.filenames
+                || result.spec.options.default
+                || result.spec.options.bashdefault)
         {
             completion = crate::quoting::quote_filename(&completion, true);
         }
@@ -179,8 +194,17 @@ fn insert_completion(
     let before: String = line.chars().take(replacement_start_char_index).collect();
     let after: String = line.chars().skip(cursor_position_chars).collect();
 
-    let new_line = format!("{}{}{}", before, completion, after);
-    let new_point = replacement_start_char_index + completion.chars().count();
+    let new_line = if completion.starts_with(&before) && !before.is_empty() {
+        format!("{}{}", completion, after)
+    } else {
+        format!("{}{}{}", before, completion, after)
+    };
+
+    let new_point = if completion.starts_with(&before) && !before.is_empty() {
+        completion.chars().count()
+    } else {
+        replacement_start_char_index + completion.chars().count()
+    };
 
     if !nospace && !completion.ends_with('/') {
         let new_point_byte: usize = new_line.chars().take(new_point).map(|c| c.len_utf8()).sum();
@@ -272,11 +296,11 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_completion_trailing_utf8() {
-        let line = "ls 中文";
-        let point = line.chars().take(4).collect::<String>().len();
-        let completion = "file.txt";
-        let current_word = "中";
+    fn test_insert_completion_full_line() {
+        let line = "git sta";
+        let point = line.len();
+        let completion = "git status"; // Full line completion
+        let current_word = "sta";
 
         let result = insert_completion(line, point, completion, false, current_word);
         assert!(result.is_ok());
