@@ -5,9 +5,11 @@
 **Type:** CLI Binary
 
 ## OVERVIEW
+
 `bft` (Bash Fuzzy Tab) is a Rust-based CLI tool providing interactive fuzzy tab completion for Bash. It integrates with `carapace` for completion generation and uses a built-in TUI for selection, replacing the need for external tools like `fzf`.
 
 ## STRUCTURE
+
 ```
 .
 ├── src/
@@ -36,7 +38,8 @@
 ## CONVENTIONS
 
 ### Code Style
-- **Error Handling**: 
+
+- **Error Handling**:
   - Lib: `thiserror` (define enums).
   - App: `anyhow::Result` (propagate).
   - **NO `unwrap()` / `expect()`** in production code.
@@ -48,18 +51,22 @@
   - Tests must cover parsing edge cases (quotes, unbalanced).
 
 ### Architecture
+
 - **Stateless**: The binary runs once per tab press. Fast startup is critical.
-- **Stdout Protocol**: 
+- **Stdout Protocol**:
   - Stdout is RESERVED for the final completion string to be fed back to Bash.
   - All debug/UI must go to Stderr / TTY.
 
 ## ANTI-PATTERNS (THIS PROJECT)
+
 - **Do NOT use `println!`**: It corrupts the completion result sent to Bash.
 - **Do NOT panic**: The shell session must survive. Handle all errors gracefully.
 - **Do NOT use `unwrap()`**: See above.
 - **Do NOT block**: Latency > 50ms is noticeable.
+- **Do NOT use full qualified name**.
 
 ## COMMANDS
+
 ```bash
 # Build
 cargo build --release

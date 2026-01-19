@@ -108,15 +108,56 @@ docker run <Tab>
 
 ## Configuration
 
-`bft` can be configured via environment variables in your `.bashrc`.
+`bft` can be configured via a JSON5 configuration file or environment variables.
+
+### Configuration File
+
+Create a file at `~/.config/bft/config.json5` (or `$XDG_CONFIG_HOME/bft/config.json5`):
+
+```json5
+{
+  // Height of the selection interface
+  "selector_height": "40%",
+  
+  // Prompt string displayed in the selector
+  "prompt": "> ",
+  
+  // Automatically select the common prefix of all candidates
+  "auto_common_prefix": true,
+  
+  // Automatically select the common prefix even if it's partial
+  "auto_common_prefix_part": false,
+  
+  // Don't trigger completion for empty command lines
+  "no_empty_cmd_completion": false,
+  
+  // Selector backend (currently only "dialoguer" is supported)
+  "selector_type": "dialoguer",
+  
+  // Configure completion providers and their priority (order matters)
+  "providers": [
+    { "type": "bash" },
+    { 
+      "type": "history", 
+      "limit": 20 // Number of history entries to suggest
+    },
+    { "type": "carapace" },
+    { "type": "env_var" }
+  ]
+}
+```
+
+### Environment Variables
+
+Environment variables can also be used for basic configuration (overridden by the config file if present).
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `FZF_TAB_COMPLETION_FZF_ARGS` | *Legacy*. Arguments for selector (height/prompt). | `None` |
-| `FZF_TAB_COMPLETION_DIR_MARK` | Marker for directory candidates | `/` |
-| `BFT_PROMPT` | Prompt string for the selector | `>` |
-
-*(Note: Some legacy `FZF_` variables are being migrated to `BFT_` prefixes)*
+| `BFT_SELECTOR_HEIGHT` | Height of the selector (e.g., `40%`, `20`) | `40%` |
+| `BFT_PROMPT` | Prompt string for the selector | `> ` |
+| `BFT_AUTO_COMMON_PREFIX` | Auto-select common prefix | `true` |
+| `BFT_AUTO_COMMON_PREFIX_PART` | Auto-select partial common prefix | `false` |
+| `BFT_NO_EMPTY_CMD_COMPLETION` | Disable completion on empty line | `false` |
 
 ## Troubleshooting
 

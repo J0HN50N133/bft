@@ -1,83 +1,122 @@
+use serde::Deserialize;
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SelectorType {
     Dialoguer,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ProviderConfig {
+    History { limit: Option<usize> },
+    Carapace,
+    Bash,
+    EnvVar,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    pub fzf_tmux_height: Option<String>,
-    pub fzf_default_opts: String,
-    pub fzf_completion_opts: String,
+    pub selector_height: Option<String>,
     pub auto_common_prefix: bool,
     pub auto_common_prefix_part: bool,
     pub prompt: String,
+    #[serde(skip, default = "default_completion_sep")]
     pub completion_sep: String,
     pub no_empty_cmd_completion: bool,
     pub selector_type: SelectorType,
+    #[serde(default)]
+    pub providers: Vec<ProviderConfig>,
+}
+
+fn default_completion_sep() -> String {
+    "\x01".to_string()
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            fzf_tmux_height: Some("40%".to_string()),
-            fzf_default_opts: String::new(),
-            fzf_completion_opts: String::new(),
+            selector_height: Some("40%".to_string()),
             auto_common_prefix: true,
             auto_common_prefix_part: false,
             prompt: "> ".to_string(),
-            completion_sep: "\x01".to_string(),
+            completion_sep: default_completion_sep(),
             no_empty_cmd_completion: false,
             selector_type: SelectorType::Dialoguer,
+            providers: vec![
+                ProviderConfig::Bash,
+                ProviderConfig::History { limit: Some(20) },
+                ProviderConfig::Carapace,
+                ProviderConfig::EnvVar,
+            ],
         }
     }
 }
 
 impl Config {
+    pub fn load() -> Self {
+        if let Some(config) = Self::from_file() {
+            return config;
+        }
+        Self::from_env()
+    }
+
+    fn from_file() -> Option<Self> {
+        let xdg_config_home = env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| {
+            let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            format!("{}/.config", home)
+        });
+
+        let config_path = PathBuf::from(xdg_config_home).join("bft/config.json5");
+        if config_path.exists()
+            && let Ok(content) = fs::read_to_string(&config_path)
+        {
+            match json5::from_str(&content) {
+                Ok(config) => return Some(config),
+                Err(e) => {
+                    log::error!("Failed to parse config file: {}", e);
+                }
+            }
+        }
+        None
+    }
+
     pub fn from_env() -> Self {
-        let fzf_tmux_height = env::var("FZF_TMUX_HEIGHT").ok();
-        let fzf_default_opts = env::var("FZF_DEFAULT_OPTS").unwrap_or_default();
-        let fzf_completion_opts = env::var("FZF_COMPLETION_OPTS").unwrap_or_default();
+        let selector_height = env::var("BFT_SELECTOR_HEIGHT").ok();
 
-        let auto_common_prefix = env::var("FZF_COMPLETION_AUTO_COMMON_PREFIX")
+        let auto_common_prefix = env::var("BFT_AUTO_COMMON_PREFIX")
             .map(|v| v == "true" || v == "1")
-            .unwrap_or(true); // Default to true as per common behavior, though bash script checks explicit "true"
+            .unwrap_or(true);
 
-        let auto_common_prefix_part = env::var("FZF_COMPLETION_AUTO_COMMON_PREFIX_PART")
+        let auto_common_prefix_part = env::var("BFT_AUTO_COMMON_PREFIX_PART")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
-        let prompt = env::var("FZF_TAB_COMPLETION_PROMPT").unwrap_or_else(|_| "> ".to_string());
+        let prompt = env::var("BFT_PROMPT").unwrap_or_else(|_| "> ".to_string());
 
-        // _FZF_COMPLETION_SEP=$'\x01' in bash script
-        let completion_sep = env::var("_FZF_COMPLETION_SEP").unwrap_or_else(|_| "\x01".to_string());
-
-        // shopt -q no_empty_cmd_completion
-        // In Rust we can't check shopt directly easily, so we rely on an env var passing it through
-        // or just a config flag. For now, let's assume it might be passed or default false.
-        // We'll add an env var for it to allow configuration.
-        let no_empty_cmd_completion = env::var("FZF_NO_EMPTY_CMD_COMPLETION")
+        let no_empty_cmd_completion = env::var("BFT_NO_EMPTY_CMD_COMPLETION")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
-        let selector_type = env::var("FZF_TAB_COMPLETION_SELECTOR")
+        let selector_type = env::var("BFT_SELECTOR")
             .map(|v| match v.to_lowercase().as_str() {
                 "dialoguer" => SelectorType::Dialoguer,
-                _ => SelectorType::Dialoguer, // Default to dialoguer
+                _ => SelectorType::Dialoguer,
             })
             .unwrap_or(SelectorType::Dialoguer);
 
         Self {
-            fzf_tmux_height,
-            fzf_default_opts,
-            fzf_completion_opts,
+            selector_height,
             auto_common_prefix,
             auto_common_prefix_part,
             prompt,
-            completion_sep,
+            completion_sep: default_completion_sep(),
             no_empty_cmd_completion,
             selector_type,
+            ..Default::default()
         }
     }
 }

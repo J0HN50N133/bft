@@ -1,4 +1,4 @@
-use crate::bash;
+use crate::bash::{self, history};
 use crate::parser::{self, ParsedLine};
 use std::fmt;
 use thiserror::Error;
@@ -419,17 +419,19 @@ pub fn get_env_variables(prefix: &str) -> Vec<String> {
 }
 
 /// History-based completion provider
-pub struct HistoryProvider;
+pub struct HistoryProvider {
+    limit: Option<usize>,
+}
 
 impl Default for HistoryProvider {
     fn default() -> Self {
-        Self::new()
+        Self::new(Some(20))
     }
 }
 
 impl HistoryProvider {
-    pub fn new() -> Self {
-        Self
+    pub fn new(limit: Option<usize>) -> Self {
+        Self { limit }
     }
 }
 
@@ -452,7 +454,7 @@ impl CompletionProvider for HistoryProvider {
     ) -> Result<Option<Vec<CompletionEntry>>, CompletionError> {
         // Use the full line as prefix to match history
         let prefix = ctx.line.trim();
-        let matches = crate::bash::history::get_history_commands_by_prefix(prefix, Some(20));
+        let matches = history::get_history_commands_by_prefix(prefix, self.limit);
 
         if !matches.is_empty() {
             Ok(Some(
@@ -511,13 +513,13 @@ impl PipelineProvider {
     }
 
     /// Add a provider to the pipeline
-    pub fn with<P: CompletionProvider + 'static>(mut self, provider: P) -> Self {
+    pub fn with<P: CompletionProvider + 'static>(&mut self, provider: P) -> &mut Self {
         self.providers.push(Box::new(provider));
         self
     }
 
     /// Add a boxed provider to the pipeline
-    pub fn with_boxed(mut self, provider: Box<dyn CompletionProvider>) -> Self {
+    pub fn with_boxed(&mut self, provider: Box<dyn CompletionProvider>) -> &mut Self {
         self.providers.push(provider);
         self
     }
@@ -601,7 +603,7 @@ mod tests {
         writeln!(temp, "ls -la").unwrap();
         unsafe { std::env::set_var("HISTFILE", temp.path()) };
 
-        let provider = HistoryProvider::new();
+        let provider = HistoryProvider::default();
 
         let parsed = ParsedLine::new(
             vec!["git".to_string(), "sta".to_string()],

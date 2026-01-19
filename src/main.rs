@@ -14,17 +14,17 @@ use crate::completion::{
     BashProvider, CarapaceProvider, CompletionContext, CompletionEngine, CompletionEntry,
     CompletionResult, EnvVarProvider, HistoryProvider, PipelineProvider, ProviderKind,
 };
-use crate::config::Config;
+use crate::config::{Config, ProviderConfig};
 use crate::selector::{Selector, SelectorConfig};
 
 const ARG_INIT_SCRIPT: &str = "--init-script";
 const ENV_READLINE_LINE: &str = "READLINE_LINE";
 const ENV_READLINE_POINT: &str = "READLINE_POINT";
-const DEFAULT_POINT_VALUE: &str = "0";
-const DEFAULT_USIZE: usize = 0;
+const DEFAULT_READLINE_POINT_STR: &str = "0";
+const DEFAULT_READLINE_POINT: usize = 0;
 const OUTPUT_READLINE_LINE_FORMAT: &str = "READLINE_LINE='{}'";
 const OUTPUT_READLINE_POINT_FORMAT: &str = "READLINE_POINT={}";
-const DEFAULT_FZF_TMUX_HEIGHT: &str = "40%";
+const DEFAULT_SELECTOR_HEIGHT: &str = "40%";
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -41,12 +41,12 @@ fn main() -> Result<()> {
     };
 
     let readline_point: usize = if args.len() >= 3 {
-        args[2].parse().unwrap_or(DEFAULT_USIZE)
+        args[2].parse().unwrap_or(DEFAULT_READLINE_POINT)
     } else {
         env::var(ENV_READLINE_POINT)
-            .unwrap_or_else(|_| DEFAULT_POINT_VALUE.to_string())
+            .unwrap_or_else(|_| DEFAULT_READLINE_POINT_STR.to_string())
             .parse()
-            .unwrap_or(DEFAULT_USIZE)
+            .unwrap_or(DEFAULT_READLINE_POINT)
     };
 
     env_logger::builder()
@@ -56,7 +56,7 @@ fn main() -> Result<()> {
 
     info!("Starting bft");
 
-    let config = Config::from_env();
+    let config = Config::load();
 
     debug!("Input: line='{}', point={}", readline_line, readline_point);
 
@@ -79,11 +79,24 @@ fn main() -> Result<()> {
         ctx.command, ctx.current_word, ctx.current_word_idx, ctx.is_after_pipe
     );
 
-    let pipeline = PipelineProvider::new("history+envvar+carapace+bash")
-        .with(BashProvider::new())
-        .with(HistoryProvider::new())
-        .with(CarapaceProvider::new())
-        .with(EnvVarProvider::new());
+    let mut pipeline = PipelineProvider::new("dynamic");
+    for provider_config in &config.providers {
+        match provider_config {
+            ProviderConfig::History { limit } => {
+                pipeline.with(HistoryProvider::new(*limit));
+            }
+            ProviderConfig::Carapace => {
+                pipeline.with(CarapaceProvider::new());
+            }
+            ProviderConfig::Bash => {
+                pipeline.with(BashProvider::new());
+            }
+            ProviderConfig::EnvVar => {
+                pipeline.with(EnvVarProvider::new());
+            }
+        }
+    }
+
     let engine = CompletionEngine::new(Box::new(pipeline));
     let result = engine.complete(&ctx)?;
 
@@ -93,7 +106,7 @@ fn main() -> Result<()> {
         result.candidates.len()
     );
 
-    let candidates = apply_post_processing(&result, &ctx.current_word, &config)?;
+    let candidates = apply_post_processing(&result, &ctx, &config)?;
 
     let (candidates, no_space_after_completion, _prefix) = crate::quoting::find_common_prefix(
         &candidates,
@@ -108,9 +121,9 @@ fn main() -> Result<()> {
             ctx: ctx.clone(),
             prompt: config.prompt.clone(),
             height: config
-                .fzf_tmux_height
+                .selector_height
                 .clone()
-                .unwrap_or_else(|| DEFAULT_FZF_TMUX_HEIGHT.to_string()),
+                .unwrap_or_else(|| DEFAULT_SELECTOR_HEIGHT.to_string()),
             header: Some(readline_line.clone()),
             fuzzy: true,
         };
@@ -165,12 +178,12 @@ fn main() -> Result<()> {
 
 fn apply_post_processing(
     result: &CompletionResult,
-    current_word: &str,
+    ctx: &CompletionContext,
     _config: &Config,
 ) -> Result<Vec<CompletionEntry>, crate::completion::CompletionError> {
     let mut candidates = result.candidates.clone();
 
-    candidates = crate::quoting::apply_filter(&result.spec.filter, &candidates, current_word)?;
+    candidates = crate::quoting::apply_filter(&result.spec.filter, &candidates, &ctx.current_word)?;
 
     if result.spec.options.filenames
         || result.spec.options.default
