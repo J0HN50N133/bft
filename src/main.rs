@@ -11,8 +11,8 @@ use std::env;
 use std::rc::Rc;
 
 use crate::completion::{
-    CarapaceProvider, CompletionContext, CompletionEngine, CompletionEntry, CompletionResult,
-    HistoryProvider, PipelineProvider, ProviderKind,
+    BashProvider, CarapaceProvider, CompletionContext, CompletionEngine, CompletionEntry,
+    CompletionResult, EnvVarProvider, HistoryProvider, PipelineProvider, ProviderKind,
 };
 use crate::config::Config;
 use crate::selector::{Selector, SelectorConfig};
@@ -79,9 +79,11 @@ fn main() -> Result<()> {
         ctx.command, ctx.current_word, ctx.current_word_idx, ctx.is_after_pipe
     );
 
-    let pipeline = PipelineProvider::new("history+carapace")
+    let pipeline = PipelineProvider::new("history+envvar+carapace+bash")
+        .with(BashProvider::new())
         .with(HistoryProvider::new())
-        .with(CarapaceProvider::new());
+        .with(CarapaceProvider::new())
+        .with(EnvVarProvider::new());
     let engine = CompletionEngine::new(Box::new(pipeline));
     let result = engine.complete(&ctx)?;
 

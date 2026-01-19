@@ -227,16 +227,21 @@ pub fn get_history_subcommands(
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::NamedTempFile;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_get_history_commands() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         // Create a temp history file
         let mut temp = NamedTempFile::new().unwrap();
         writeln!(temp, "ls -la").unwrap();
         writeln!(temp, "git status").unwrap();
         writeln!(temp, "cat file.txt").unwrap();
         writeln!(temp, "ls -lh").unwrap(); // Duplicate command, should be deduped
+        temp.flush().unwrap();
 
         // Set the temp file as HISTFILE
         unsafe { env::set_var("HISTFILE", temp.path()) };
@@ -253,11 +258,13 @@ mod tests {
 
     #[test]
     fn test_filter_history_commands() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         let mut temp = NamedTempFile::new().unwrap();
         writeln!(temp, "git status").unwrap();
         writeln!(temp, "git log").unwrap();
         writeln!(temp, "git checkout").unwrap();
         writeln!(temp, "ls -la").unwrap();
+        temp.flush().unwrap();
 
         unsafe { env::set_var("HISTFILE", temp.path()) };
 
@@ -277,10 +284,12 @@ mod tests {
 
     #[test]
     fn test_get_matching_history_commands() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         let mut temp = NamedTempFile::new().unwrap();
         writeln!(temp, "echo hello").unwrap();
         writeln!(temp, "echo world").unwrap();
         writeln!(temp, "ls -la").unwrap();
+        temp.flush().unwrap();
 
         unsafe { env::set_var("HISTFILE", temp.path()) };
 
@@ -294,12 +303,14 @@ mod tests {
 
     #[test]
     fn test_get_history_subcommands() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         let mut temp = NamedTempFile::new().unwrap();
         writeln!(temp, "git checkout main").unwrap();
         writeln!(temp, "git checkout feature").unwrap();
         writeln!(temp, "git status").unwrap();
         writeln!(temp, "git log").unwrap();
         writeln!(temp, "ls -la").unwrap();
+        temp.flush().unwrap();
 
         unsafe { env::set_var("HISTFILE", temp.path()) };
 

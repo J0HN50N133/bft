@@ -183,6 +183,9 @@ pub struct CompletionSpec {
 pub trait CompletionProvider: Send {
     fn name(&self) -> &str;
     fn kind(&self) -> ProviderKind;
+    fn should_try(&self, _ctx: &CompletionContext) -> bool {
+        true
+    }
     fn try_complete(
         &self,
         ctx: &CompletionContext,
@@ -389,21 +392,21 @@ impl CompletionProvider for EnvVarProvider {
         ProviderKind::EnvVar
     }
 
+    fn should_try(&self, ctx: &CompletionContext) -> bool {
+        ctx.current_word.starts_with('$')
+    }
+
     fn try_complete(
         &self,
         ctx: &CompletionContext,
     ) -> Result<Option<Vec<CompletionEntry>>, CompletionError> {
-        if ctx.current_word.starts_with('$') {
-            let var_prefix = ctx.current_word[1..].to_string();
-            let vars = get_env_variables(&var_prefix);
-            Ok(Some(
-                vars.into_iter()
-                    .map(|v| CompletionEntry::new(v, ProviderKind::EnvVar))
-                    .collect(),
-            ))
-        } else {
-            Ok(None)
-        }
+        let var_prefix = ctx.current_word[1..].to_string();
+        let vars = get_env_variables(&var_prefix);
+        Ok(Some(
+            vars.into_iter()
+                .map(|v| CompletionEntry::new(v, ProviderKind::EnvVar))
+                .collect(),
+        ))
     }
 }
 
@@ -439,16 +442,16 @@ impl CompletionProvider for HistoryProvider {
         ProviderKind::History
     }
 
+    fn should_try(&self, ctx: &CompletionContext) -> bool {
+        !ctx.line.trim().is_empty()
+    }
+
     fn try_complete(
         &self,
         ctx: &CompletionContext,
     ) -> Result<Option<Vec<CompletionEntry>>, CompletionError> {
         // Use the full line as prefix to match history
         let prefix = ctx.line.trim();
-        if prefix.is_empty() {
-            return Ok(None);
-        }
-
         let matches = crate::bash::history::get_history_commands_by_prefix(prefix, Some(20));
 
         if !matches.is_empty() {
@@ -477,7 +480,11 @@ impl CompletionEngine {
     /// Generate completion candidates using all providers
     /// Returns the first non-empty result
     pub fn complete(&self, ctx: &CompletionContext) -> Result<CompletionResult, CompletionError> {
-        let candidates = self.provider.try_complete(ctx)?.unwrap_or_default();
+        let candidates = if self.provider.should_try(ctx) {
+            self.provider.try_complete(ctx)?.unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let used_provider = self.provider.kind();
         let spec = resolve_compspec(&ctx.command)?;
         Ok(CompletionResult {
@@ -533,6 +540,10 @@ impl CompletionProvider for PipelineProvider {
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for provider in &self.providers {
+            if !provider.should_try(ctx) {
+                continue;
+            }
+
             if let Some(candidates) = provider.try_complete(ctx)? {
                 log::debug!(
                     "[pipeline] {} returned {} candidates",
