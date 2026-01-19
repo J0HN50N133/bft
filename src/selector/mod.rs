@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use thiserror::Error;
 
-use crate::completion::CompletionContext;
+use crate::completion::{CompletionContext, CompletionEntry};
 
 #[derive(Error, Debug)]
 pub enum SelectorError {
@@ -47,10 +47,10 @@ impl Default for SelectorConfig {
 pub trait Selector {
     fn select_one(
         &self,
-        candidates: &[String],
+        candidates: &[CompletionEntry],
         current_word: &str,
         config: &SelectorConfig,
-    ) -> Result<Option<String>, SelectorError>;
+    ) -> Result<Option<CompletionEntry>, SelectorError>;
 }
 
 // Re-export implementations

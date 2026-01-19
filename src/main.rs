@@ -11,8 +11,8 @@ use std::env;
 use std::rc::Rc;
 
 use crate::completion::{
-    CarapaceProvider, CompletionContext, CompletionEngine, CompletionResult, HistoryProvider,
-    PipelineProvider,
+    CarapaceProvider, CompletionContext, CompletionEngine, CompletionEntry, CompletionResult,
+    HistoryProvider, PipelineProvider, ProviderKind,
 };
 use crate::config::Config;
 use crate::selector::{Selector, SelectorConfig};
@@ -122,8 +122,9 @@ fn main() -> Result<()> {
         candidates.first().cloned()
     };
 
-    if let Some(mut completion) = selected {
-        debug!("Selected completion: '{}'", completion);
+    if let Some(entry) = selected {
+        debug!("Selected completion: '{}' ({})", entry.value, entry.kind);
+        let mut completion = entry.value;
 
         let current_word_char_count = ctx.current_word.chars().count();
         let cursor_position_chars = readline_line.chars().take(readline_point).count();
@@ -137,6 +138,7 @@ fn main() -> Result<()> {
         let is_full_line = !before.is_empty() && completion.starts_with(&before);
 
         if !is_full_line
+            && entry.kind != ProviderKind::History
             && (result.spec.options.filenames
                 || result.spec.options.default
                 || result.spec.options.bashdefault)
@@ -163,7 +165,7 @@ fn apply_post_processing(
     result: &CompletionResult,
     current_word: &str,
     _config: &Config,
-) -> Result<Vec<String>, crate::completion::CompletionError> {
+) -> Result<Vec<CompletionEntry>, crate::completion::CompletionError> {
     let mut candidates = result.candidates.clone();
 
     candidates = crate::quoting::apply_filter(&result.spec.filter, &candidates, current_word)?;

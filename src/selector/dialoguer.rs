@@ -1,3 +1,4 @@
+use crate::completion::CompletionEntry;
 use crate::selector::{Selector, SelectorConfig, SelectorError, theme};
 use dialoguer::console::Term;
 use log::{debug, warn};
@@ -14,10 +15,10 @@ impl DialoguerSelector {
 impl Selector for DialoguerSelector {
     fn select_one(
         &self,
-        candidates: &[String],
+        candidates: &[CompletionEntry],
         current_word: &str,
         config: &SelectorConfig,
-    ) -> Result<Option<String>, SelectorError> {
+    ) -> Result<Option<CompletionEntry>, SelectorError> {
         debug!(
             "DialoguerSelector::select_one called with {} candidates (fuzzy={})",
             candidates.len(),
@@ -30,7 +31,7 @@ impl Selector for DialoguerSelector {
         }
 
         if candidates.len() == 1 {
-            debug!("Single candidate, returning: {}", candidates[0]);
+            debug!("Single candidate, returning: {}", candidates[0].value);
             return Ok(Some(candidates[0].clone()));
         }
 
@@ -43,17 +44,6 @@ impl Selector for DialoguerSelector {
         ctrlc::set_handler(|| {})?;
 
         let theme = &theme::CustomColorfulTheme::new();
-
-        if candidates.is_empty() {
-            debug!("No candidates after fuzzy filtering");
-            return Ok(None);
-        }
-
-        debug!(
-            "Filtered from {} to {} candidates",
-            candidates.len(),
-            candidates.len()
-        );
 
         let select_result = dialoguer::FuzzySelect::with_theme(theme)
             .report(false)
@@ -69,8 +59,8 @@ impl Selector for DialoguerSelector {
 
         match select_result {
             Ok(Some(index)) => {
-                let selected: &String = &candidates[index];
-                debug!("Selected candidate: {}", selected);
+                let selected = &candidates[index];
+                debug!("Selected candidate: {}", selected.value);
                 Ok(Some(selected.clone()))
             }
             Ok(None) => {

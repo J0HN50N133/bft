@@ -1,3 +1,4 @@
+use crate::completion::CompletionEntry;
 use glob::Pattern;
 use shellexpand;
 use shlex;
@@ -26,22 +27,17 @@ fn shell_quote(s: &str) -> String {
         .to_string()
 }
 
-pub fn mark_directories(candidates: Vec<String>) -> Vec<String> {
+pub fn mark_directories(candidates: Vec<CompletionEntry>) -> Vec<CompletionEntry> {
     candidates
         .into_iter()
-        .map(|path| {
-            let expanded = shellexpand::tilde(&path);
+        .map(|mut entry| {
+            let expanded = shellexpand::tilde(&entry.value);
             let unescaped = unescape_filename(&expanded);
 
-            if Path::new(&unescaped).is_dir() {
-                if !path.ends_with('/') {
-                    format!("{}/", path)
-                } else {
-                    path
-                }
-            } else {
-                path
+            if Path::new(&unescaped).is_dir() && !entry.value.ends_with('/') {
+                entry.value = format!("{}/", entry.value);
             }
+            entry
         })
         .collect()
 }
@@ -51,23 +47,33 @@ fn unescape_filename(s: &str) -> String {
 }
 
 pub fn find_common_prefix(
-    candidates: &[String],
+    candidates: &[CompletionEntry],
     input_len: usize,
     auto_common_prefix_part: bool,
-) -> (Vec<String>, bool, String) {
+) -> (Vec<CompletionEntry>, bool, String) {
     if candidates.is_empty() {
         return (vec![], false, String::new());
     }
 
-    let prefix = find_longest_common_prefix(candidates);
+    let values: Vec<String> = candidates.iter().map(|c| c.value.clone()).collect();
+    let prefix = find_longest_common_prefix(&values);
     let prefix_len = prefix.len();
 
     if prefix_len > input_len {
-        let all_match = candidates.iter().all(|c| c.len() == prefix_len);
+        let all_match = candidates.iter().all(|c| c.value.len() == prefix_len);
 
         if all_match || auto_common_prefix_part {
             let nospace = candidates.len() > 1;
-            return (vec![prefix.clone()], nospace, prefix);
+            // Create a synthetic entry for the prefix.
+            // Using the kind of the first candidate is a heuristic.
+            // If candidates have mixed providers, this might be misleading,
+            // but for a common prefix it often doesn't matter as much.
+            let kind = candidates[0].kind;
+            return (
+                vec![CompletionEntry::new(prefix.clone(), kind)],
+                nospace,
+                prefix,
+            );
         }
     }
 
@@ -95,9 +101,9 @@ fn find_longest_common_prefix(strings: &[String]) -> String {
 
 pub fn apply_filter(
     filter: &Option<String>,
-    candidates: &[String],
+    candidates: &[CompletionEntry],
     current_word: &str,
-) -> Result<Vec<String>, glob::PatternError> {
+) -> Result<Vec<CompletionEntry>, glob::PatternError> {
     let Some(pattern_str) = filter else {
         return Ok(candidates.to_vec());
     };
@@ -113,10 +119,10 @@ pub fn apply_filter(
 
     let pattern = Pattern::new(glob_pattern)?;
 
-    let result: Vec<String> = candidates
+    let result: Vec<CompletionEntry> = candidates
         .iter()
         .filter(|c| {
-            let matches = pattern.matches(c);
+            let matches = pattern.matches(&c.value);
             if invert { !matches } else { matches }
         })
         .cloned()
@@ -127,6 +133,8 @@ pub fn apply_filter(
 
 #[cfg(test)]
 mod tests {
+    use crate::completion::ProviderKind;
+
     use super::*;
 
     #[test]
@@ -138,46 +146,37 @@ mod tests {
 
     #[test]
     fn test_common_prefix() {
-        let candidates = ["file1", "file2"];
-        let (res, _nospace, prefix) = find_common_prefix(
-            &candidates.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-            0,
-            false,
-        );
+        let candidates = [
+            CompletionEntry::new("file1".to_string(), ProviderKind::Bash),
+            CompletionEntry::new("file2".to_string(), ProviderKind::Bash),
+        ];
+        let (res, _nospace, prefix) = find_common_prefix(&candidates, 0, false);
         // auto_common_prefix_part=false, so we don't complete partial prefix "file"
         // We expect original candidates and no prefix returned
         assert_eq!(prefix, "");
         assert_eq!(res.len(), 2);
 
-        let (res, nospace, prefix) = find_common_prefix(
-            &candidates.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-            0,
-            true,
-        );
+        let (res, nospace, prefix) = find_common_prefix(&candidates, 0, true);
         // With auto_common_prefix_part=true, we complete to "file"
         assert_eq!(res.len(), 1);
-        assert_eq!(res[0], "file");
+        assert_eq!(res[0].value, "file");
         assert_eq!(prefix, "file");
         assert!(nospace);
     }
 
     #[test]
     fn test_filter() {
-        let candidates = ["foo", "bar", "baz"];
-        let filtered = apply_filter(
-            &Some("!b*".to_string()),
-            &candidates.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-            "",
-        )
-        .unwrap();
-        assert_eq!(filtered, vec!["foo"]);
+        let candidates = [
+            CompletionEntry::new("foo".to_string(), ProviderKind::Bash),
+            CompletionEntry::new("bar".to_string(), ProviderKind::Bash),
+            CompletionEntry::new("baz".to_string(), ProviderKind::Bash),
+        ];
+        let filtered = apply_filter(&Some("!b*".to_string()), &candidates, "").unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].value, "foo");
 
-        let filtered = apply_filter(
-            &Some("*z".to_string()),
-            &candidates.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-            "",
-        )
-        .unwrap();
-        assert_eq!(filtered, vec!["baz"]);
+        let filtered = apply_filter(&Some("*z".to_string()), &candidates, "").unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].value, "baz");
     }
 }
