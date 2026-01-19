@@ -22,8 +22,6 @@ const ENV_READLINE_LINE: &str = "READLINE_LINE";
 const ENV_READLINE_POINT: &str = "READLINE_POINT";
 const DEFAULT_READLINE_POINT_STR: &str = "0";
 const DEFAULT_READLINE_POINT: usize = 0;
-const OUTPUT_READLINE_LINE_FORMAT: &str = "READLINE_LINE='{}'";
-const OUTPUT_READLINE_POINT_FORMAT: &str = "READLINE_POINT={}";
 const DEFAULT_SELECTOR_HEIGHT: &str = "40%";
 
 fn main() -> Result<()> {
@@ -154,6 +152,7 @@ fn main() -> Result<()> {
 
         if !is_full_line
             && entry.kind != ProviderKind::History
+            && entry.kind != ProviderKind::EnvVar
             && (result.spec.options.filenames
                 || result.spec.options.default
                 || result.spec.options.bashdefault)
@@ -234,20 +233,14 @@ fn insert_completion(
         let final_point = new_point_byte + 1;
 
         println!(
-            "{}",
-            OUTPUT_READLINE_LINE_FORMAT.replace("{}", &new_line_with_space)
+            "READLINE_LINE={}",
+            shlex::try_quote(&new_line_with_space).unwrap()
         );
-        println!(
-            "{}",
-            OUTPUT_READLINE_POINT_FORMAT.replace("{}", &final_point.to_string())
-        );
+        println!("READLINE_POINT={}", final_point);
     } else {
         let new_point_byte: usize = new_line.chars().take(new_point).map(|c| c.len_utf8()).sum();
-        println!("{}", OUTPUT_READLINE_LINE_FORMAT.replace("{}", &new_line));
-        println!(
-            "{}",
-            OUTPUT_READLINE_POINT_FORMAT.replace("{}", &new_point_byte.to_string())
-        );
+        println!("READLINE_LINE={}", shlex::try_quote(&new_line).unwrap());
+        println!("READLINE_POINT={}", new_point_byte);
     }
 
     Ok(())

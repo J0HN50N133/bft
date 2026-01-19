@@ -32,9 +32,18 @@ pub fn query_complete(command: &str) -> Result<Option<CompletionSpec>, BashError
 }
 
 pub fn execute_compgen(args: &[String]) -> Result<Vec<String>, BashError> {
+    let quoted_args: Vec<String> = args
+        .iter()
+        .map(|a| {
+            shlex::try_quote(a)
+                .unwrap_or_else(|_| std::borrow::Cow::Owned(a.to_string()))
+                .to_string()
+        })
+        .collect();
+
     let output = Command::new("bash")
         .arg("-c")
-        .arg(format!("compgen {}", args.join(" ")))
+        .arg(format!("compgen {}", quoted_args.join(" ")))
         .output()?;
 
     if !output.status.success() {
