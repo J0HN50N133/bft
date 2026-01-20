@@ -53,6 +53,16 @@ cargo install --path .
 cargo install bft
 ```
 
+#### Via Nix (Flake)
+
+```bash
+# Install to your profile
+nix profile install github:J0HN50N133/bft
+
+# Or run directly without installing
+nix run github:J0HN50N133/bft
+```
+
 ## Setup
 
 1. Add the following to your `~/.bashrc`:
