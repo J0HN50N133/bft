@@ -55,6 +55,13 @@ jobs:
         uses: cachix/install-nix-action@v25
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+      
+      - name: Push Cachix
+        uses: cachix/cachix-action@v14
+        with:
+          name: bft
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
 
       - name: Check Flake
         run: nix flake check
